@@ -16,6 +16,7 @@ import (
 )
 
 const DomainName = "assume-role-id.ryanjarv.sh"
+const ValidationDomain = "ryanjarv.sh"
 
 func NewAssumeRoleIdStack(scope constructs.Construct, id string) cdk.Stack {
 	stack := cdk.NewStack(scope, &id, &cdk.StackProps{
@@ -58,7 +59,7 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 	cert := certmgr.NewCertificate(scope, j.String("cert"), &certmgr.CertificateProps{
 		DomainName: j.String(DomainName),
 		Validation: certmgr.CertificateValidation_FromEmail(&map[string]*string{
-			DomainName: j.String("ryanjarv.sh"),
+			DomainName: j.String(ValidationDomain),
 		}),
 	})
 

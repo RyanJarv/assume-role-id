@@ -1,5 +1,5 @@
 {
-  "app": "go mod download && go run assume-role-id.go",
+  "app": "go mod download && go run cdk.go",
   "watch": {
     "include": [
       "**"

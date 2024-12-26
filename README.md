@@ -1,12 +1,13 @@
 # Assume Role ID
 
-This is 
+Web service for SaaS provider research. Hosted at [https://assume-role-id.ryanjarv.sh](https://assume-role-id.ryanjarv.sh).
 
-The `cdk.json` file tells the CDK toolkit how to execute your app.
+## Deploy
 
-## Useful commands
+Update the following: 
 
- * `cdk deploy`      deploy this stack to your default AWS account/region
- * `cdk diff`        compare deployed stack with current state
- * `cdk synth`       emits the synthesized CloudFormation template
- * `go test`         run unit tests
+* The PROFILE variable in the Makefile to the AWS CLI profile you want to use. 
+* The DomainName and ValidationDomain constants in [cdk.go](./cdk.go) to the domain you want to use.
+  * You'll need to be able to receive emails at ValidationDomain to validate the certificate.
+
+Then run `make bootstrap && make deploy`.
