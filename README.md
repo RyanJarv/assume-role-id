@@ -1,6 +1,6 @@
-# Welcome to your CDK Go project!
+# Assume Role ID
 
-This is a blank project for CDK development with Go.
+This is 
 
 The `cdk.json` file tells the CDK toolkit how to execute your app.
 
