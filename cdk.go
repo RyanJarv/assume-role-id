@@ -116,8 +116,11 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 				OriginAccessControl: cloudfront.NewFunctionUrlOriginAccessControl(scope, j.String("origin-access-control"), &cloudfront.FunctionUrlOriginAccessControlProps{}),
 				ReadTimeout:         cdk.Duration_Seconds(j.Number(60)),
 			}),
+			ViewerProtocolPolicy: cloudfront.ViewerProtocolPolicy_REDIRECT_TO_HTTPS,
+			CachePolicy:          cloudfront.CachePolicy_CACHING_DISABLED(),
 		},
 		Certificate: cert,
+		HttpVersion: cloudfront.HttpVersion_HTTP2_AND_3,
 		DomainNames: j.Strings(DomainName),
 	})
 
