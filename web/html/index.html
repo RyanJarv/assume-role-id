@@ -111,7 +111,7 @@
             pollEvents(roleName);
 
             // Set interval to poll every 5 seconds
-            pollingInterval = setInterval(() => pollEvents(roleName), 5000);
+            pollingInterval = setInterval(() => pollEvents(roleName), 10000);
         }
 
         async function pollEvents(roleName) {

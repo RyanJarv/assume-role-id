@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	cdk "github.com/aws/aws-cdk-go/awscdk/v2"
 	certmgr "github.com/aws/aws-cdk-go/awscdk/v2/awscertificatemanager"
 	cloudfront "github.com/aws/aws-cdk-go/awscdk/v2/awscloudfront"
@@ -72,6 +73,7 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 			"ACCOUNT_ID": cdk.Aws_ACCOUNT_ID(),
 			"BUCKET":     bucket.BucketName(),
 		},
+		Timeout: cdk.Duration_Seconds(j.Number(60)),
 	})
 	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
 		Actions: &[]*string{
@@ -87,6 +89,7 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
 		Actions: &[]*string{
 			j.String("ec2:DescribeRegions"),
+			j.String("cloudtrail:LookupEvents"),
 		},
 		Resources: &[]*string{
 			j.String("*"),
@@ -101,7 +104,7 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 			j.String("s3:PutAccessPointPolicy"),
 		},
 		Resources: &[]*string{
-			j.String("arn:aws:s3:::accesspoint/assume-role-id-*"),
+			j.String(fmt.Sprintf("arn:aws:s3:%s:%s:accesspoint/assume-role-id-*", *cdk.Aws_REGION(), *cdk.Aws_ACCOUNT_ID())),
 		},
 	}))
 
