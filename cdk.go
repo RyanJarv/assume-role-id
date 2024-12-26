@@ -13,9 +13,10 @@ import (
 	"github.com/aws/constructs-go/constructs/v10"
 	j "github.com/aws/jsii-runtime-go"
 	"strconv"
+	"strings"
 )
 
-const DomainName = "assume-role-id.ryanjarv.sh"
+const DomainName = "id.assume.ryanjarv.sh"
 const ValidationDomain = "ryanjarv.sh"
 
 func NewAssumeRoleIdStack(scope constructs.Construct, id string) cdk.Stack {
@@ -89,8 +90,9 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 		DomainNames: j.Strings(DomainName),
 	})
 
+	zoneName := strings.Join(strings.Split(DomainName, ".")[1:], ".")
 	zone := route53.NewHostedZone(scope, j.String("hosted-zone"), &route53.HostedZoneProps{
-		ZoneName: j.String(DomainName),
+		ZoneName: j.String(zoneName),
 	})
 
 	route53.NewCnameRecord(scope, j.String("cname-record"), &route53.CnameRecordProps{
@@ -98,6 +100,7 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 		Comment:    j.String("Cname for the assume-role-id lambda function url"),
 		Ttl:        cdk.Duration_Minutes(j.Number(30)),
 		DomainName: fnDist.DomainName(),
+		RecordName: j.String(DomainName + "."),
 	})
 
 	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
