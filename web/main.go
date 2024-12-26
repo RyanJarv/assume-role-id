@@ -43,10 +43,20 @@ func Run() error {
 		ctx.SetLoggingLevel(pkg.DebugLogLevel)
 	}
 
+	accountId := os.Getenv("ACCOUNT_ID")
+	if accountId == "" {
+		return fmt.Errorf("missing ACCOUNT_ID")
+	}
+
+	bucket := os.Getenv("BUCKET")
+	if bucket == "" {
+		return fmt.Errorf("missing BUCKET")
+	}
+
 	scanner, err := pkg.NewScanner(&pkg.NewScannerInput{
 		Config:    cfg,
-		AccountId: os.Getenv("ACCOUNT_ID"),
-		Bucket:    os.Getenv("BUCKET"),
+		AccountId: accountId,
+		Bucket:    bucket,
 	})
 	if err != nil {
 		return fmt.Errorf("creating scanner: %w", err)
@@ -151,14 +161,24 @@ func (h *handler) pollEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if params == nil {
-		http.Error(w, "assume role event not found", http.StatusNotFound)
-		return
+		h.ctx.Error.Printf("assume role events not found for: %s", name)
+		http.Error(w, "assume role events not found", http.StatusNotFound)
 	} else {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
-		j, _ := json.Marshal(params)
-		w.Write(j)
+		j, err := json.Marshal(params)
+		if err != nil {
+			h.ctx.Error.Printf("marshalling params: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
+
+		if _, err := w.Write(j); err != nil {
+			h.ctx.Error.Printf("writing response: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
 	}
+
+	return
 }
 
 func GetEnabledRegions(cfg aws.Config, ctx *pkg.Context) ([]string, error) {

@@ -119,6 +119,7 @@ func AnalyzeEvents(ctx *Context, events []cloudtrailTypes.Event, roleName string
 		ctx.Debug.Printf("got event %s: %s", *event.EventId, debugEvent)
 		for _, r := range event.Resources {
 			if *r.ResourceType == "AWS::IAM::Role" && strings.HasSuffix(*r.ResourceName, suffix) {
+				ctx.Debug.Printf("found matching event: %s", *event.EventId)
 				assumeRoleEvent := &Event{}
 				if err := json.Unmarshal([]byte(*event.CloudTrailEvent), assumeRoleEvent); err != nil {
 					return nil, fmt.Errorf("poll: unmarshalling event: %w", err)
@@ -143,5 +144,6 @@ func AnalyzeEvents(ctx *Context, events []cloudtrailTypes.Event, roleName string
 			}
 		}
 	}
+
 	return results, nil
 }
