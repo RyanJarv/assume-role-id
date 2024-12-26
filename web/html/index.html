@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Role Generator</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* Optional: Customize card appearance */
+        .event-card {
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            background-color: #f8f9fa;
+        }
+
+        .event-label {
+            font-weight: bold;
+        }
+
+        /* Spinner positioning */
+        #pollingIndicator {
+            display: none; /* Hidden by default */
+        }
+    </style>
+</head>
+<body>
+<div class="container my-5">
+    <h1 class="mb-4">AWS Role Generator</h1>
+
+    <!-- Align Button and Role ARN Input on the Same Line -->
+    <div class="row mb-4 align-items-end">
+        <div class="col-md-4">
+            <button id="generateRoleBtn" class="btn btn-primary w-100">Generate Role</button>
+        </div>
+        <div class="col-md-8">
+            <input type="text" class="form-control" id="roleArn" placeholder="Role ARN" readonly>
+        </div>
+    </div>
+
+    <!-- Polling Indicator -->
+    <div class="row mb-4" id="pollingIndicator">
+        <div class="col-md-12 d-flex align-items-center">
+            <div class="spinner-border text-secondary me-2" role="status">
+                <span class="visually-hidden">Polling...</span>
+            </div>
+            <span>Polling for events...</span>
+        </div>
+    </div>
+
+    <h2>Events</h2>
+    <!-- Indication that the table can scroll (optional in this layout) -->
+    <p class="text-muted">Events are displayed below. Scroll to view more details if necessary.</p>
+
+    <!-- Events Container -->
+    <div id="eventsContainer">
+        <!-- Event cards will be appended here -->
+    </div>
+</div>
+
+<!-- Bootstrap JS and dependencies -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const generateRoleBtn = document.getElementById('generateRoleBtn');
+        const roleArnInput = document.getElementById('roleArn');
+        const eventsContainer = document.getElementById('eventsContainer');
+        const pollingIndicator = document.getElementById('pollingIndicator');
+        let pollingInterval = null;
+        const seenEventIds = new Set();
+
+        generateRoleBtn.addEventListener('click', async () => {
+            try {
+                // Disable button to prevent multiple clicks
+                generateRoleBtn.disabled = true;
+                generateRoleBtn.textContent = 'Generating...';
+
+                // Fetch role ARN
+                const response = await fetch('/role');
+                if (!response.ok) throw new Error('Failed to fetch role ARN');
+                const data = await response.json();
+                const roleArn = data.role_arn;
+                roleArnInput.value = roleArn;
+
+                // Extract role name from ARN
+                const roleNameMatch = roleArn.match(/role\/[^/]+\/([^"]+)$/);
+                if (!roleNameMatch) throw new Error('Invalid role ARN format');
+                const roleName = roleNameMatch[1];
+
+                // Start polling
+                startPolling(roleName);
+            } catch (error) {
+                alert(error.message);
+                generateRoleBtn.disabled = false;
+                generateRoleBtn.textContent = 'Generate Role';
+            }
+        });
+
+        function startPolling(roleName) {
+            // Show polling indicator
+            pollingIndicator.style.display = 'flex';
+
+            // Initial poll immediately
+            pollEvents(roleName);
+
+            // Set interval to poll every 5 seconds
+            pollingInterval = setInterval(() => pollEvents(roleName), 5000);
+        }
+
+        async function pollEvents(roleName) {
+            try {
+                const response = await fetch(`/poll/${roleName}`);
+                if (!response.ok) throw new Error('Failed to poll events');
+                const data = await response.json();
+                const events = data.results;
+
+                events.forEach(event => {
+                    if (!seenEventIds.has(event.event_id)) {
+                        seenEventIds.add(event.event_id);
+                        addEventToContainer(event);
+                    }
+                });
+            } catch (error) {
+                console.error('Polling error:', error);
+            }
+        }
+
+        function addEventToContainer(event) {
+            // Create the main card container
+            const card = document.createElement('div');
+            card.classList.add('event-card', 'shadow-sm');
+
+            // Event Info: Event ID, Time, Region
+            const eventInfoRow = document.createElement('div');
+            eventInfoRow.classList.add('row', 'mb-2');
+
+            // Event ID
+            const eventIdCol = document.createElement('div');
+            eventIdCol.classList.add('col-12');
+            const eventIdLabel = document.createElement('span');
+            eventIdLabel.classList.add('event-label');
+            eventIdLabel.textContent = 'Event ID: ';
+            const eventIdText = document.createElement('span');
+            eventIdText.textContent = event.event_id || 'N/A';
+            eventIdCol.appendChild(eventIdLabel);
+            eventIdCol.appendChild(eventIdText);
+            eventInfoRow.appendChild(eventIdCol);
+
+            // Time
+            const timeCol = document.createElement('div');
+            timeCol.classList.add('col-12');
+            const timeLabel = document.createElement('span');
+            timeLabel.classList.add('event-label');
+            timeLabel.textContent = 'Time: ';
+            const timeText = document.createElement('span');
+            timeText.textContent = event.time ? new Date(event.time).toLocaleString() : 'N/A';
+            timeCol.appendChild(timeLabel);
+            timeCol.appendChild(timeText);
+            eventInfoRow.appendChild(timeCol);
+
+            // Region
+            const regionCol = document.createElement('div');
+            regionCol.classList.add('col-12');
+            const regionLabel = document.createElement('span');
+            regionLabel.classList.add('event-label');
+            regionLabel.textContent = 'Region: ';
+            const regionText = document.createElement('span');
+            regionText.textContent = event.region || 'N/A';
+            regionCol.appendChild(regionLabel);
+            regionCol.appendChild(regionText);
+            eventInfoRow.appendChild(regionCol);
+
+            card.appendChild(eventInfoRow);
+
+            // Source Principal ARN
+            const sourcePrincipalArnCol = document.createElement('div');
+            sourcePrincipalArnCol.classList.add('col-12');
+            const sourcePrincipalArnLabel = document.createElement('span');
+            sourcePrincipalArnLabel.classList.add('event-label');
+            sourcePrincipalArnLabel.textContent = 'Source Principal ARN: ';
+            const sourcePrincipalArnText = document.createElement('span');
+            sourcePrincipalArnText.textContent = event.source_principal_arn || 'N/A';
+            sourcePrincipalArnCol.appendChild(sourcePrincipalArnLabel);
+            sourcePrincipalArnCol.appendChild(sourcePrincipalArnText);
+            eventInfoRow.appendChild(sourcePrincipalArnCol);
+
+            // Role Session Name
+            const roleArnCol = document.createElement('div');
+            roleArnCol.classList.add('col-12');
+            const roleArnLabel = document.createElement('span');
+            roleArnLabel.classList.add('event-label');
+            roleArnLabel.textContent = 'Role Arn: ';
+            const roleArnText = document.createElement('span');
+            roleArnText.textContent = event.assume_role_params.roleArn || 'N/A';
+            roleArnCol.appendChild(roleArnLabel);
+            roleArnCol.appendChild(roleArnText);
+            eventInfoRow.appendChild(roleArnCol);
+
+            // Role Session Name
+            const roleSessionNameCol = document.createElement('div');
+            roleSessionNameCol.classList.add('col-12');
+            const roleSessionNameLabel = document.createElement('span');
+            roleSessionNameLabel.classList.add('event-label');
+            roleSessionNameLabel.textContent = 'Role Session Name: ';
+            const roleSessionNameText = document.createElement('span');
+            roleSessionNameText.textContent = event.assume_role_params.roleSessionName || 'N/A';
+            roleSessionNameCol.appendChild(roleSessionNameLabel);
+            roleSessionNameCol.appendChild(roleSessionNameText);
+            eventInfoRow.appendChild(roleSessionNameCol);
+
+            // External Id
+            const externalIdCol = document.createElement('div');
+            externalIdCol.classList.add('col-12');
+            const externalIdLabel = document.createElement('span');
+            externalIdLabel.classList.add('event-label');
+            externalIdLabel.textContent = 'External Id: ';
+            const externalIdText = document.createElement('span');
+            externalIdText.textContent = event.assume_role_params.externalId || 'N/A';
+            externalIdCol.appendChild(externalIdLabel);
+            externalIdCol.appendChild(externalIdText);
+            eventInfoRow.appendChild(externalIdCol);
+
+            // User Agent
+            const userAgentCol = document.createElement('div');
+            userAgentCol.classList.add('col-12');
+            const userAgentLabel = document.createElement('span');
+            userAgentLabel.classList.add('event-label');
+            userAgentLabel.textContent = 'User Agent: ';
+            const userAgentText = document.createElement('span');
+            userAgentText.textContent = event.user_agent || 'N/A';
+            userAgentCol.appendChild(userAgentLabel);
+            userAgentCol.appendChild(userAgentText);
+            eventInfoRow.appendChild(userAgentCol);
+
+            // Source IP
+            const sourceIpCol = document.createElement('div');
+            sourceIpCol.classList.add('col-12');
+            const sourceIpLabel = document.createElement('span');
+            sourceIpLabel.classList.add('event-label');
+            sourceIpLabel.textContent = 'Source IP: ';
+            const sourceIpText = document.createElement('span');
+            sourceIpText.textContent = event.source_ip || 'N/A';
+            sourceIpCol.appendChild(sourceIpLabel);
+            sourceIpCol.appendChild(sourceIpText);
+            eventInfoRow.appendChild(sourceIpCol);
+
+
+            // Append the card to the events container
+            eventsContainer.prepend(card);
+        }
+    });
+</script>
+</body>
+</html>
