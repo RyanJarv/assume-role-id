@@ -73,6 +73,37 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 			"BUCKET":     bucket.BucketName(),
 		},
 	})
+	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
+		Actions: &[]*string{
+			j.String("iam:CreateRole"),
+			j.String("iam:TagRole"),
+			j.String("iam:DeleteRole"),
+			j.String("iam:ListRoles"),
+		},
+		Resources: &[]*string{
+			j.String("arn:aws:iam::*:role/assume-role-id/*"),
+		},
+	}))
+	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
+		Actions: &[]*string{
+			j.String("ec2:DescribeRegions"),
+		},
+		Resources: &[]*string{
+			j.String("*"),
+		},
+	}))
+
+	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
+		Actions: &[]*string{
+			j.String("s3:CreateAccessPoint"),
+			j.String("s3:DeleteAccessPoint"),
+			j.String("s3:GetAccessPointPolicy"),
+			j.String("s3:PutAccessPointPolicy"),
+		},
+		Resources: &[]*string{
+			j.String("arn:aws:s3:::accesspoint/assume-role-id-*"),
+		},
+	}))
 
 	fnUrl := lambda.NewFunctionUrl(scope, j.String("url-id"), &lambda.FunctionUrlProps{
 		AuthType:   lambda.FunctionUrlAuthType_AWS_IAM,
@@ -103,28 +134,6 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 		RecordName: j.String(DomainName + "."),
 	})
 
-	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
-		Actions: &[]*string{
-			j.String("iam:CreateRole"),
-			j.String("iam:DeleteRole"),
-			j.String("iam:ListRoles"),
-		},
-		Resources: &[]*string{
-			j.String("arn:aws:iam::*:role/assume-role-id/*"),
-		},
-	}))
-
-	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
-		Actions: &[]*string{
-			j.String("s3:CreateAccessPoint"),
-			j.String("s3:DeleteAccessPoint"),
-			j.String("s3:GetAccessPointPolicy"),
-			j.String("s3:PutAccessPointPolicy"),
-		},
-		Resources: &[]*string{
-			j.String("arn:aws:s3:::accesspoint/assume-role-id-*"),
-		},
-	}))
 	return fnDist, zone, bucket
 }
 
