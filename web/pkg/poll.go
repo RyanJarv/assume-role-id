@@ -110,7 +110,7 @@ func PollRegionEvents(ctx *Context, client *cloudtrail.Client, scanner *Scanner,
 }
 
 func AnalyzeEvents(ctx *Context, events []cloudtrailTypes.Event, roleName string, scanner *Scanner) ([]AssumeRoleEvent, error) {
-	suffix := AssumeRolePrefix + roleName
+	suffix := roleName + AssumeRolePostfix
 	ctx.Debug.Printf("looking for events to roles with suffix %s", suffix)
 
 	results := []AssumeRoleEvent{}

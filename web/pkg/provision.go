@@ -5,10 +5,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"strings"
 	"time"
 )
 
-const AssumeRolePrefix = "/assume-role-id/"
+const AssumeRolePostfix = "-assume-role-id"
 
 // const KeepRolesFor = time.Hour * 24
 const KeepRolesFor = time.Hour * 24
@@ -30,8 +31,7 @@ func ProvisionRole(ctx *Context, client *iam.Client, req *ProvisionRoleRequest) 
 	}()
 
 	role, err := client.CreateRole(ctx, &iam.CreateRoleInput{
-		RoleName:    aws.String(req.RolePrefix + RandStringRunes(24)),
-		Path:        aws.String(AssumeRolePrefix),
+		RoleName:    aws.String(req.RolePrefix + RandStringRunes(24) + AssumeRolePostfix),
 		Description: aws.String("role for assume-role-id"),
 		AssumeRolePolicyDocument: aws.String(`{
 			"Version": "2012-10-17",
@@ -62,15 +62,20 @@ func ProvisionRole(ctx *Context, client *iam.Client, req *ProvisionRoleRequest) 
 }
 
 func CleanUpOldRoles(ctx *Context, client *iam.Client) error {
-	roles, err := client.ListRoles(ctx, &iam.ListRolesInput{
-		PathPrefix: aws.String(AssumeRolePrefix),
-	})
+	roles := []types.Role{}
+	resp, err := client.ListRoles(ctx, &iam.ListRolesInput{})
 	if err != nil {
 		return fmt.Errorf("listing roles: %w", err)
 	}
 
+	for _, role := range resp.Roles {
+		if strings.HasSuffix(*role.RoleName, AssumeRolePostfix) {
+			roles = append(roles, role)
+		}
+	}
+
 	cutoff := time.Now().UTC().Add(-KeepRolesFor)
-	for _, role := range roles.Roles {
+	for _, role := range roles {
 		if role.CreateDate.UTC().Before(cutoff) {
 			ctx.Debug.Printf("deleting role %s", *role.RoleName)
 

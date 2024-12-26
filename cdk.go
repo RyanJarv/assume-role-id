@@ -83,7 +83,7 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 			j.String("iam:ListRoles"),
 		},
 		Resources: &[]*string{
-			j.String("arn:aws:iam::*:role/assume-role-id/*"),
+			j.String("arn:aws:iam::*:role/*-assume-role-id"),
 		},
 	}))
 	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
