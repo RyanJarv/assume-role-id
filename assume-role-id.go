@@ -2,6 +2,7 @@ package main
 
 import (
 	cdk "github.com/aws/aws-cdk-go/awscdk/v2"
+	certmgr "github.com/aws/aws-cdk-go/awscdk/v2/awscertificatemanager"
 	cloudfront "github.com/aws/aws-cdk-go/awscdk/v2/awscloudfront"
 	origins "github.com/aws/aws-cdk-go/awscdk/v2/awscloudfrontorigins"
 	iam "github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
@@ -11,45 +12,54 @@ import (
 	golambda "github.com/aws/aws-cdk-go/awscdklambdagoalpha/v2"
 	"github.com/aws/constructs-go/constructs/v10"
 	j "github.com/aws/jsii-runtime-go"
+	"strconv"
 )
 
 const DomainName = "assume-role-id.ryanjarv.sh"
 
-type AssumeRoleIdStackProps struct {
-	cdk.StackProps
-}
-
-func NewAssumeRoleIdStack(scope constructs.Construct, id string, props *AssumeRoleIdStackProps) cdk.Stack {
-	var sprops cdk.StackProps
-	if props != nil {
-		sprops = props.StackProps
-	}
-	stack := cdk.NewStack(scope, &id, &sprops)
-
-	fnDist, bucket := NewAssumeRoleIdFunction(stack)
-
-	cdk.NewCfnOutput(stack, j.String("UrlOutput"), &cdk.CfnOutputProps{
-		Value:      fnDist.DomainName(),
-		ExportName: j.String("Domain"),
+func NewAssumeRoleIdStack(scope constructs.Construct, id string) cdk.Stack {
+	stack := cdk.NewStack(scope, &id, &cdk.StackProps{
+		Env: &cdk.Environment{
+			// CloudFront certificates have to be deployed to us-east-1, so just deploy everything there.
+			Region: j.String("us-east-1"),
+		},
 	})
 
+	fnDist, zone, bucket := NewAssumeRoleIdFunction(stack)
+
+	cdk.NewCfnOutput(stack, j.String("UrlOutput"), &cdk.CfnOutputProps{
+		Value: fnDist.DomainName(),
+	})
+
+	for i, _ := range *zone.HostedZoneNameServers() {
+		cdk.NewCfnOutput(stack, j.String("NameServer-"+strconv.Itoa(i)), &cdk.CfnOutputProps{
+			Value: cdk.Fn_Select(j.Number(i), zone.HostedZoneNameServers()),
+		})
+	}
+
 	cdk.NewCfnOutput(stack, j.String("BucketOutput"), &cdk.CfnOutputProps{
-		Value:      bucket.BucketName(),
-		ExportName: j.String("Bucket"),
+		Value: bucket.BucketName(),
 	})
 
 	cdk.NewCfnOutput(stack, j.String("AccountId"), &cdk.CfnOutputProps{
-		Value:      cdk.Aws_ACCOUNT_ID(),
-		ExportName: j.String("AccountId"),
+		Value: cdk.Aws_ACCOUNT_ID(),
 	})
 
 	return stack
 }
 
-func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, s3.Bucket) {
-	scope := constructs.NewConstruct(stack, j.String("function"))
+func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.HostedZone, s3.Bucket) {
+	scope := constructs.NewConstruct(stack, j.String("fn"))
+
 	bucket := s3.NewBucket(scope, j.String("bucket"), &s3.BucketProps{
 		AccessControl: s3.BucketAccessControl_PRIVATE,
+	})
+
+	cert := certmgr.NewCertificate(scope, j.String("cert"), &certmgr.CertificateProps{
+		DomainName: j.String(DomainName),
+		Validation: certmgr.CertificateValidation_FromEmail(&map[string]*string{
+			DomainName: j.String("ryanjarv.sh"),
+		}),
 	})
 
 	function := golambda.NewGoFunction(scope, j.String("function-id"), &golambda.GoFunctionProps{
@@ -67,15 +77,14 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, s3.Bucke
 		InvokeMode: lambda.InvokeMode_RESPONSE_STREAM,
 		Function:   function,
 	})
-	oac := cloudfront.NewFunctionUrlOriginAccessControl(scope, j.String("origin-access-control"), &cloudfront.FunctionUrlOriginAccessControlProps{})
-
 	fnDist := cloudfront.NewDistribution(scope, j.String("distribution"), &cloudfront.DistributionProps{
 		DefaultBehavior: &cloudfront.BehaviorOptions{
 			Origin: origins.FunctionUrlOrigin_WithOriginAccessControl(fnUrl, &origins.FunctionUrlOriginWithOACProps{
-				OriginAccessControl: oac,
+				OriginAccessControl: cloudfront.NewFunctionUrlOriginAccessControl(scope, j.String("origin-access-control"), &cloudfront.FunctionUrlOriginAccessControlProps{}),
 				ReadTimeout:         cdk.Duration_Seconds(j.Number(60)),
 			}),
 		},
+		Certificate: cert,
 		DomainNames: j.Strings(DomainName),
 	})
 
@@ -83,7 +92,7 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, s3.Bucke
 		ZoneName: j.String(DomainName),
 	})
 
-	route53.NewCnameRecord(stack, j.String("cname-record"), &route53.CnameRecordProps{
+	route53.NewCnameRecord(scope, j.String("cname-record"), &route53.CnameRecordProps{
 		Zone:       zone,
 		Comment:    j.String("Cname for the assume-role-id lambda function url"),
 		Ttl:        cdk.Duration_Minutes(j.Number(30)),
@@ -112,46 +121,13 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, s3.Bucke
 			j.String("arn:aws:s3:::accesspoint/assume-role-id-*"),
 		},
 	}))
-	return fnDist, bucket
+	return fnDist, zone, bucket
 }
 
 func main() {
 	defer j.Close()
 
 	app := cdk.NewApp(nil)
-
-	NewAssumeRoleIdStack(app, "AssumeRoleIdStack", &AssumeRoleIdStackProps{
-		cdk.StackProps{
-			Env: env(),
-		},
-	})
-
+	NewAssumeRoleIdStack(app, "AssumeRoleIdStack")
 	app.Synth(nil)
-}
-
-// env determines the AWS environment (account+region) in which our stack is to
-// be deployed. For more information see: https://docs.aws.amazon.com/cdk/latest/guide/environments.html
-func env() *cdk.Environment {
-	// If unspecified, this stack will be "environment-agnostic".
-	// Account/Region-dependent features and context lookups will not work, but a
-	// single synthesized template can be deployed anywhere.
-	//---------------------------------------------------------------------------
-	return nil
-
-	// Uncomment if you know exactly what account and region you want to deploy
-	// the stack to. This is the recommendation for production stacks.
-	//---------------------------------------------------------------------------
-	// return &cdk.Environment{
-	//  Account: jsii.String("123456789012"),
-	//  Region:  jsii.String("us-east-1"),
-	// }
-
-	// Uncomment to specialize this stack for the AWS Account and Region that are
-	// implied by the current CLI configuration. This is recommended for dev
-	// stacks.
-	//---------------------------------------------------------------------------
-	// return &cdk.Environment{
-	//  Account: jsii.String(os.Getenv("CDK_DEFAULT_ACCOUNT")),
-	//  Region:  jsii.String(os.Getenv("CDK_DEFAULT_REGION")),
-	// }
 }
