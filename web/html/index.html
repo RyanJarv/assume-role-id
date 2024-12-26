@@ -102,7 +102,7 @@
                 roleArnInput.value = roleArn;
 
                 // Extract role name from ARN
-                const roleNameMatch = roleArn.match(/role\/[^/]+\/([^"]+)$/);
+                const roleNameMatch = roleArn.match(/role\/([^"]+)$/);
                 if (!roleNameMatch) throw new Error('Invalid role ARN format');
                 const roleName = roleNameMatch[1];
 
