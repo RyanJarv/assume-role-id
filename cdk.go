@@ -115,6 +115,7 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 	})
 	fnDist := cloudfront.NewDistribution(scope, j.String("distribution"), &cloudfront.DistributionProps{
 		DefaultBehavior: &cloudfront.BehaviorOptions{
+			AllowedMethods: cloudfront.AllowedMethods_ALLOW_ALL(),
 			Origin: origins.FunctionUrlOrigin_WithOriginAccessControl(fnUrl, &origins.FunctionUrlOriginWithOACProps{
 				OriginAccessControl: cloudfront.NewFunctionUrlOriginAccessControl(scope, j.String("origin-access-control"), &cloudfront.FunctionUrlOriginAccessControlProps{}),
 				ReadTimeout:         cdk.Duration_Seconds(j.Number(60)),
