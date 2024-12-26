@@ -1,6 +1,6 @@
 # Assume Role ID
 
-Web service for SaaS provider research. Hosted at [https://assume-role-id.ryanjarv.sh](https://assume-role-id.ryanjarv.sh).
+Web service for SaaS provider research. Hosted at [https://id.assume.ryanjarv.sh](https://id.assume.ryanjarv.sh).
 
 ## Deploy
 
