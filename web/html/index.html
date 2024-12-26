@@ -90,14 +90,11 @@
                 generateRoleBtn.textContent = 'Generating...';
 
                 // Fetch role ARN
-                const response = await fetch('/role', {
-                    method: 'POST',
+                const response = await fetch(`/role?rolePrefix=${document.getElementById('rolePrefix').value}`, {
+                    method: 'GET',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        role_prefix: document.getElementById('rolePrefix').value
-                    })
                 });
                 if (!response.ok) throw new Error('Failed to fetch role ARN');
                 const data = await response.json();

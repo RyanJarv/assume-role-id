@@ -121,6 +121,7 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 				ReadTimeout:         cdk.Duration_Seconds(j.Number(60)),
 			}),
 			ViewerProtocolPolicy: cloudfront.ViewerProtocolPolicy_REDIRECT_TO_HTTPS,
+			OriginRequestPolicy:  cloudfront.OriginRequestPolicy_ALL_VIEWER_EXCEPT_HOST_HEADER(),
 			CachePolicy:          cloudfront.CachePolicy_CACHING_DISABLED(),
 		},
 		Certificate: cert,

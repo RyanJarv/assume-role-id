@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/ryanjarv/assume-role-id/web/pkg"
-	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -117,26 +116,14 @@ type handler struct {
 	scanner    *pkg.Scanner
 }
 
+// NOTE: We're using GET requests here because cloudFront + lambda urls seem to have issues with POST requests.
+//
+//	See: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-lambda.html#create-oac-overview-lambda
 func (h *handler) provisionRole(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	all, err := io.ReadAll(r.Body)
-	if err != nil {
-		h.ctx.Error.Printf("reading body: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}
-
-	req := &pkg.ProvisionRoleRequest{}
-	if err = json.Unmarshal(all, req); err != nil {
-		h.ctx.Error.Printf("unmarshalling body: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	result, err := pkg.ProvisionRole(h.ctx, h.iam, req)
+	rolePrefix := r.URL.Query().Get("rolePrefix")
+	result, err := pkg.ProvisionRole(h.ctx, h.iam, &pkg.ProvisionRoleRequest{
+		RolePrefix: rolePrefix,
+	})
 	if err != nil {
 		h.ctx.Error.Printf("provisioning role: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
