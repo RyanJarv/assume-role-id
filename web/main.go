@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/ryanjarv/assume-role-id/web/pkg"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -107,7 +108,25 @@ type handler struct {
 }
 
 func (h *handler) provisionRole(w http.ResponseWriter, r *http.Request) {
-	result, err := pkg.ProvisionRole(h.ctx, h.iam)
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	all, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.ctx.Error.Printf("reading body: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
+
+	req := &pkg.ProvisionRoleRequest{}
+	if err = json.Unmarshal(all, req); err != nil {
+		h.ctx.Error.Printf("unmarshalling body: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	result, err := pkg.ProvisionRole(h.ctx, h.iam, req)
 	if err != nil {
 		h.ctx.Error.Printf("provisioning role: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)

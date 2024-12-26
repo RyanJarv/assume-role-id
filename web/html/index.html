@@ -8,7 +8,8 @@
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
 
     <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css"
+          integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
 
     <style>
         /* Optional: Customize card appearance */
@@ -35,12 +36,19 @@
     <h1 class="mb-4">AWS Role Generator</h1>
 
     <!-- Align Button and Role ARN Input on the Same Line -->
-    <div class="row mb-4 align-items-end">
-        <div class="col-md-4">
+    <div class="row align-items-end">
+        <div class="col-md-2">
             <button id="generateRoleBtn" class="btn btn-primary w-100">Generate Role</button>
         </div>
-        <div class="col-md-8">
+        <div class="col-md-2">
+            <input type="text" class="form-control" id="rolePrefix" placeholder="Role Prefix">
+        </div>
+        <div class="col-md-6">
             <input type="text" class="form-control" id="roleArn" placeholder="Role ARN" readonly>
+        </div>
+        <div class="col-md-2">
+            <button id="copyButton" type="button" class="btn btn-md btn-primary" data-toggle="popover" title="Copied!" data-content="Copied!">Copy</button>
+<!--            <a id="copyButton" tabindex="0" class="btn btn-md btn-primary" role="button" data-toggle="popover" data-trigger="focus" title="Copied!" data-content="Copied!">Dismissible popover</a>-->
         </div>
     </div>
 
@@ -83,7 +91,15 @@
                 generateRoleBtn.textContent = 'Generating...';
 
                 // Fetch role ARN
-                const response = await fetch('/role');
+                const response = await fetch('/role', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        role_prefix: document.getElementById('rolePrefix').value
+                    })
+                });
                 if (!response.ok) throw new Error('Failed to fetch role ARN');
                 const data = await response.json();
                 const roleArn = data.role_arn;
@@ -256,6 +272,76 @@
             eventsContainer.prepend(card);
         }
     });
+
+
+
+    document.getElementById('copyButton').addEventListener('click', function() {
+        const textField = document.getElementById('roleArn');
+        // Use the Clipboard API
+        navigator.clipboard.writeText(textField.value)
+            .then(() => {
+                setTimeout(() => {
+                    $('#copyButton').popover('toggle')
+                }, 1000);
+            })
+            .catch(err => {
+                // Fallback for older browsers or if permission is denied
+                fallbackCopyText(textField);
+            });
+    });
+
+    // Fallback method using a temporary textarea
+    function fallbackCopyText(textField) {
+        // Create a temporary textarea element
+        const textarea = document.createElement('textarea');
+        textarea.value = textField.value;
+
+        // Avoid scrolling to bottom
+        textarea.style.top = '0';
+        textarea.style.left = '0';
+        textarea.style.position = 'fixed';
+
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+
+        try {
+            const successful = document.execCommand('copy');
+            const successMsg = document.getElementById('copySuccess');
+            if (successful) {
+                successMsg.style.display = 'block';
+                setTimeout(() => {
+                    successMsg.style.display = 'none';
+                }, 2000);
+            } else {
+                alert('Failed to copy text.');
+            }
+        } catch (err) {
+            alert('Error copying text: ', err);
+        }
+
+        // Remove the temporary textarea
+        document.body.removeChild(textarea);
+    }
+</script>
+
+<script src="https://code.jquery.com/jquery-3.2.1.slim.min.js"
+        integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.12.9/dist/umd/popper.min.js"
+        integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/js/bootstrap.min.js"
+        integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+        crossorigin="anonymous"></script>
+
+<script>
+    $(function () {
+        $('[data-toggle="tooltip"]').tooltip()
+    })
+    $(function () {
+        $('[data-toggle="popover"]').popover()
+    })
 </script>
 </body>
 </html>

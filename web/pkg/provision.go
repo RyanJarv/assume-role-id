@@ -13,11 +13,15 @@ const AssumeRolePrefix = "/assume-role-id/"
 // const KeepRolesFor = time.Hour * 24
 const KeepRolesFor = time.Hour * 24
 
+type ProvisionRoleRequest struct {
+	RolePrefix string `json:"role_prefix"`
+}
+
 type ProvisionRoleOutput struct {
 	RoleArn string `json:"role_arn"`
 }
 
-func ProvisionRole(ctx *Context, client *iam.Client) (*ProvisionRoleOutput, error) {
+func ProvisionRole(ctx *Context, client *iam.Client, req *ProvisionRoleRequest) (*ProvisionRoleOutput, error) {
 	go func() {
 		err := CleanUpOldRoles(ctx, client)
 		if err != nil {
@@ -26,7 +30,7 @@ func ProvisionRole(ctx *Context, client *iam.Client) (*ProvisionRoleOutput, erro
 	}()
 
 	role, err := client.CreateRole(ctx, &iam.CreateRoleInput{
-		RoleName:    aws.String(RandStringRunes(24)),
+		RoleName:    aws.String(req.RolePrefix + RandStringRunes(24)),
 		Path:        aws.String(AssumeRolePrefix),
 		Description: aws.String("role for assume-role-id"),
 		AssumeRolePolicyDocument: aws.String(`{
