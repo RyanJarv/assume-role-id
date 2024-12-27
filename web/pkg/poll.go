@@ -114,7 +114,7 @@ func PollRegionEvents(ctx *Context, client *cloudtrail.Client, scanner *Scanner,
 }
 
 func AnalyzeAssumeRoleEvent(ctx *Context, client *cloudtrail.Client, event cloudtrailTypes.Event, roleName string, scanner *Scanner, start time.Time) (*AssumeRoleEvent, error) {
-	ctx.Debug.Printf("looking for events for role %s", roleName)
+	ctx.Debug.Printf("looking for events for role %s since %s", roleName, start.String())
 
 	debugEvent, _ := json.Marshal(event)
 	ctx.Debug.Printf("got event %s: %s", *event.EventId, debugEvent)
@@ -124,6 +124,7 @@ func AnalyzeAssumeRoleEvent(ctx *Context, client *cloudtrail.Client, event cloud
 			if eventRoleName, err := GetResourceName(*r.ResourceName); err != nil {
 				return nil, fmt.Errorf("getting resource name: %w", err)
 			} else if eventRoleName != roleName {
+				ctx.Debug.Printf("skipping event for %s", eventRoleName)
 				return nil, nil
 			}
 			found = true

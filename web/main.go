@@ -171,6 +171,7 @@ func (h *handler) provisionRole(w http.ResponseWriter, r *http.Request) {
 	} else if !pkg.IsOurRole(*role.Role) {
 		h.ctx.Error.Printf("forbidden role name: %s", roleName)
 		http.Error(w, "forbidden role name", http.StatusForbidden)
+		return
 	} else {
 		if err := pkg.DeleteRole(h.ctx, h.iam, roleName); err != nil {
 			h.ctx.Error.Printf("deleting role: %v", err)
@@ -206,9 +207,11 @@ func (h *handler) pollEvents(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		h.ctx.Error.Printf("getting role: %v", err)
 		http.Error(w, "role not found", http.StatusNotFound)
+		return
 	} else if !pkg.IsOurRole(*role.Role) {
 		h.ctx.Error.Printf("role is not ours: %s", name)
 		http.Error(w, "role was not created by assume role id", http.StatusForbidden)
+		return
 	} else {
 		createdAt = *role.Role.CreateDate
 	}
