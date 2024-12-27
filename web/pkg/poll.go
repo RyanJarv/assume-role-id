@@ -16,8 +16,7 @@ type PollEventsOutput struct {
 	Results  []AssumeRoleEvent `json:"results"`
 }
 
-func PollEvents(ctx *Context, client map[string]*cloudtrail.Client, scanner *Scanner, roleName string) (*PollEventsOutput, error) {
-	start := time.Now().Add(-1 * time.Hour).UTC()
+func PollEvents(ctx *Context, client map[string]*cloudtrail.Client, scanner *Scanner, roleName string, start time.Time) (*PollEventsOutput, error) {
 	ctx.Debug.Printf("looking for role %s since %s", roleName, start.String())
 
 	var allResults []AssumeRoleEvent
@@ -68,6 +67,7 @@ type AssumeRoleEvent struct {
 	SourcePrincipalArn string             `json:"source_principal_arn"`
 	UserIdentity       UserIdentity       `json:"user_identity"`
 	AssumeRoleParams   *RequestParameters `json:"assume_role_params"`
+	Events             []string
 }
 
 func PollRegionEvents(ctx *Context, client *cloudtrail.Client, scanner *Scanner, roleName string, start time.Time) ([]AssumeRoleEvent, error) {
@@ -89,9 +89,13 @@ func PollRegionEvents(ctx *Context, client *cloudtrail.Client, scanner *Scanner,
 			return nil, fmt.Errorf("looking up events: %w", err)
 		}
 
-		results, err := AnalyzeEvents(ctx, resp.Events, roleName, scanner)
-		if err != nil {
-			return nil, fmt.Errorf("analyzing events: %w", err)
+		results := []AssumeRoleEvent{}
+		for _, event := range resp.Events {
+			if result, err := AnalyzeAssumeRoleEvent(ctx, client, event, roleName, scanner, start); err != nil {
+				return nil, fmt.Errorf("analyzing events: %w", err)
+			} else if result != nil {
+				results = append(results, *result)
+			}
 		}
 
 		allResults = append(allResults, results...)
@@ -109,41 +113,78 @@ func PollRegionEvents(ctx *Context, client *cloudtrail.Client, scanner *Scanner,
 	return allResults, nil
 }
 
-func AnalyzeEvents(ctx *Context, events []cloudtrailTypes.Event, roleName string, scanner *Scanner) ([]AssumeRoleEvent, error) {
-	suffix := roleName + AssumeRolePostfix
-	ctx.Debug.Printf("looking for events to roles with suffix %s", suffix)
+func AnalyzeAssumeRoleEvent(ctx *Context, client *cloudtrail.Client, event cloudtrailTypes.Event, roleName string, scanner *Scanner, start time.Time) (*AssumeRoleEvent, error) {
+	ctx.Debug.Printf("looking for events for role %s", roleName)
 
-	results := []AssumeRoleEvent{}
-	for _, event := range events {
-		debugEvent, _ := json.Marshal(event)
-		ctx.Debug.Printf("got event %s: %s", *event.EventId, debugEvent)
-		for _, r := range event.Resources {
-			if *r.ResourceType == "AWS::IAM::Role" && strings.HasSuffix(*r.ResourceName, suffix) {
-				ctx.Debug.Printf("found matching event: %s", *event.EventId)
-				assumeRoleEvent := &Event{}
-				if err := json.Unmarshal([]byte(*event.CloudTrailEvent), assumeRoleEvent); err != nil {
-					return nil, fmt.Errorf("poll: unmarshalling event: %w", err)
-				}
-
-				sourcePrincipalId := strings.Split(assumeRoleEvent.UserIdentity.PrincipalId, ":")[0]
-
-				sourcePrincipalArn, err := scanner.LookupPrincipalId(ctx, sourcePrincipalId)
-				if err != nil {
-					return nil, fmt.Errorf("scanning arn: %w", err)
-				}
-				results = append(results, AssumeRoleEvent{
-					EventId:            assumeRoleEvent.EventID,
-					Time:               assumeRoleEvent.EventTime,
-					Region:             assumeRoleEvent.AwsRegion,
-					SourceIp:           assumeRoleEvent.SourceIPAddress,
-					UserAgent:          assumeRoleEvent.UserAgent,
-					UserIdentity:       assumeRoleEvent.UserIdentity,
-					SourcePrincipalArn: sourcePrincipalArn,
-					AssumeRoleParams:   &assumeRoleEvent.RequestParameters,
-				})
+	debugEvent, _ := json.Marshal(event)
+	ctx.Debug.Printf("got event %s: %s", *event.EventId, debugEvent)
+	var found bool
+	for _, r := range event.Resources {
+		if *r.ResourceType == "AWS::IAM::Role" {
+			if eventRoleName, err := GetResourceName(*r.ResourceName); err != nil {
+				return nil, fmt.Errorf("getting resource name: %w", err)
+			} else if eventRoleName != roleName {
+				return nil, nil
 			}
+			found = true
 		}
 	}
+	if !found {
+		return nil, fmt.Errorf("no role resource found in the AssumeRole event")
+	}
 
-	return results, nil
+	ctx.Debug.Printf("found matching event: %s", *event.EventId)
+	assumeRoleEvent := &Event{}
+	if err := json.Unmarshal([]byte(*event.CloudTrailEvent), assumeRoleEvent); err != nil {
+		return nil, fmt.Errorf("poll: unmarshalling event: %w", err)
+	}
+
+	sourcePrincipalId := strings.Split(assumeRoleEvent.UserIdentity.PrincipalId, ":")[0]
+
+	sourcePrincipalArn, err := scanner.LookupPrincipalId(ctx, sourcePrincipalId)
+	if err != nil {
+		return nil, fmt.Errorf("scanning arn: %w", err)
+	}
+
+	var eventNames []string
+	var nextToken *string
+	for {
+		resp, err := client.LookupEvents(ctx, &cloudtrail.LookupEventsInput{
+			StartTime: aws.Time(start),
+			LookupAttributes: []cloudtrailTypes.LookupAttribute{
+				{
+					AttributeKey:   cloudtrailTypes.LookupAttributeKeyAccessKeyId,
+					AttributeValue: aws.String(assumeRoleEvent.ResponseElements.Credentials.AccessKeyId),
+				},
+			},
+			NextToken: nextToken,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("looking up events: %w", err)
+		}
+		for _, event := range resp.Events {
+			eventNames = append(eventNames, *event.EventName)
+		}
+
+		if resp.NextToken == nil || *resp.NextToken == "" {
+			break
+		}
+
+		nextToken = resp.NextToken
+
+		ctx.Debug.Printf("looking up events with next token %s", TryMarshal(nextToken))
+	}
+
+	return &AssumeRoleEvent{
+		EventId:            assumeRoleEvent.EventID,
+		Time:               assumeRoleEvent.EventTime,
+		Region:             assumeRoleEvent.AwsRegion,
+		SourceIp:           assumeRoleEvent.SourceIPAddress,
+		UserAgent:          assumeRoleEvent.UserAgent,
+		UserIdentity:       assumeRoleEvent.UserIdentity,
+		SourcePrincipalArn: sourcePrincipalArn,
+		AssumeRoleParams:   &assumeRoleEvent.RequestParameters,
+		Events:             eventNames,
+	}, nil
+
 }

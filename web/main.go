@@ -8,18 +8,22 @@ import (
 	"fmt"
 	"github.com/aws/aws-lambda-go/lambdaurl"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/ryanjarv/assume-role-id/web/pkg"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 )
-
-var ErrNoSuchPrincipal = errors.New("no such principal")
 
 //go:embed html
 var htmlFs embed.FS
@@ -33,14 +37,6 @@ func main() {
 
 func Run() error {
 	ctx := pkg.NewContext(context.Background())
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("loading default config: %w", err)
-	}
-
-	if os.Getenv("DEBUG") != "" {
-		ctx.SetLoggingLevel(pkg.DebugLogLevel)
-	}
 
 	accountId := os.Getenv("ACCOUNT_ID")
 	if accountId == "" {
@@ -52,8 +48,45 @@ func Run() error {
 		return fmt.Errorf("missing BUCKET")
 	}
 
+	sandboxRoleArn := os.Getenv("SANDBOX_ROLE_ARN")
+	if sandboxRoleArn == "" {
+		return fmt.Errorf("missing SANDBOX_ROLE_ARN")
+	}
+
+	svcArn, err := arn.Parse(sandboxRoleArn)
+	if err != nil {
+		return fmt.Errorf("parsing svc role arn: %w", err)
+	}
+
+	svcAccountCfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("loading default config: %w", err)
+	}
+
+	sandboxAccountCfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("loading default config: %w", err)
+	}
+
+	sandboxCreds := stscreds.NewAssumeRoleProvider(sts.NewFromConfig(sandboxAccountCfg), sandboxRoleArn, func(o *stscreds.AssumeRoleOptions) {
+		o.RoleSessionName = "assume-role-id-sandbox"
+	})
+	sandboxAccountCfg.Credentials = aws.NewCredentialsCache(sandboxCreds)
+
+	if identity, err := sts.NewFromConfig(sandboxAccountCfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{}); err != nil {
+		return fmt.Errorf("getting caller identity: %w", err)
+	} else if *identity.Account != svcArn.AccountID {
+		return fmt.Errorf("not in the sandbox account: currently using %s", *identity.Account)
+	} else {
+		ctx.Debug.Printf("running in account: %s", *identity.Account)
+	}
+
+	if os.Getenv("DEBUG") != "" {
+		ctx.SetLoggingLevel(pkg.DebugLogLevel)
+	}
+
 	scanner, err := pkg.NewScanner(&pkg.NewScannerInput{
-		Config:    cfg,
+		Config:    svcAccountCfg,
 		AccountId: accountId,
 		Bucket:    bucket,
 	})
@@ -61,15 +94,15 @@ func Run() error {
 		return fmt.Errorf("creating scanner: %w", err)
 	}
 
-	regions, err := GetEnabledRegions(cfg, ctx)
+	regions, err := GetEnabledRegions(sandboxAccountCfg, ctx)
 	if err != nil {
 		return fmt.Errorf("getting enabled regions: %w", err)
 	}
 
 	h := &handler{
 		ctx:        ctx,
-		iam:        iam.NewFromConfig(cfg),
-		cloudtrail: GetCloudtrailClients(cfg, regions),
+		iam:        iam.NewFromConfig(sandboxAccountCfg),
+		cloudtrail: GetCloudtrailClients(sandboxAccountCfg, regions),
 		scanner:    scanner,
 	}
 	ctx.Debug.Printf("account id: %s, bucket: %s", h.scanner.AccountId, h.scanner.BucketName)
@@ -120,9 +153,40 @@ type handler struct {
 //
 //	See: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-lambda.html#create-oac-overview-lambda
 func (h *handler) provisionRole(w http.ResponseWriter, r *http.Request) {
-	rolePrefix := r.URL.Query().Get("rolePrefix")
+	roleName := r.URL.Query().Get("roleName")
+	requireExternalId := false
+	if v := r.URL.Query().Get("requireExternalId"); strings.ToLower(v) != "true" {
+		requireExternalId = true
+	}
+
+	if roleName == "" {
+		roleName = pkg.RandStringRunes(16)
+	}
+	if role, err := h.iam.GetRole(h.ctx, &iam.GetRoleInput{
+		RoleName: aws.String(roleName),
+	}); err != nil {
+		var notFoundErr *types.NoSuchEntityException
+		if ok := errors.As(err, &notFoundErr); ok {
+			h.ctx.Debug.Printf("IAM role '%s' does not exist.\n", roleName)
+		} else {
+			h.ctx.Error.Printf("getting role: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	} else if !pkg.IsOurRole(*role.Role) {
+		h.ctx.Error.Printf("forbidden role name: %s", roleName)
+		http.Error(w, "forbidden role name", http.StatusForbidden)
+	} else {
+		if err := pkg.DeleteRole(h.ctx, h.iam, roleName); err != nil {
+			h.ctx.Error.Printf("deleting role: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	result, err := pkg.ProvisionRole(h.ctx, h.iam, &pkg.ProvisionRoleRequest{
-		RolePrefix: rolePrefix,
+		RoleName:          roleName,
+		RequireExternalId: requireExternalId,
 	})
 	if err != nil {
 		h.ctx.Error.Printf("provisioning role: %v", err)
@@ -140,7 +204,20 @@ func (h *handler) pollEvents(w http.ResponseWriter, r *http.Request) {
 	h.ctx.Debug.Printf("polling events for %s", r.PathValue("name"))
 
 	name := r.PathValue("name")
-	params, err := pkg.PollEvents(h.ctx, h.cloudtrail, h.scanner, name)
+	var createdAt time.Time
+
+	if role, err := h.iam.GetRole(h.ctx, &iam.GetRoleInput{
+		RoleName: aws.String(name),
+	}); err != nil {
+		h.ctx.Error.Printf("getting role: %v", err)
+		http.Error(w, "role not found", http.StatusNotFound)
+	} else if !pkg.IsOurRole(*role.Role) {
+		h.ctx.Error.Printf("role is not ours: %s", name)
+		http.Error(w, "role was not created by assume role id", http.StatusForbidden)
+	} else {
+		createdAt = *role.Role.CreateDate
+	}
+	params, err := pkg.PollEvents(h.ctx, h.cloudtrail, h.scanner, name, createdAt.UTC())
 	if err != nil {
 		h.ctx.Error.Printf("provisioning role: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -150,19 +227,19 @@ func (h *handler) pollEvents(w http.ResponseWriter, r *http.Request) {
 	if params == nil {
 		h.ctx.Error.Printf("assume role events not found for: %s", name)
 		http.Error(w, "assume role events not found", http.StatusNotFound)
-	} else {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Content-Type", "application/json")
-		j, err := json.Marshal(params)
-		if err != nil {
-			h.ctx.Error.Printf("marshalling params: %v", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-		}
+	}
 
-		if _, err := w.Write(j); err != nil {
-			h.ctx.Error.Printf("writing response: %v", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-		}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	j, err := json.Marshal(params)
+	if err != nil {
+		h.ctx.Error.Printf("marshalling params: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
+
+	if _, err := w.Write(j); err != nil {
+		h.ctx.Error.Printf("writing response: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 
 	return

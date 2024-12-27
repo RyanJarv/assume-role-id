@@ -11,6 +11,7 @@ import (
 	route53 "github.com/aws/aws-cdk-go/awscdk/v2/awsroute53"
 	s3 "github.com/aws/aws-cdk-go/awscdk/v2/awss3"
 	golambda "github.com/aws/aws-cdk-go/awscdklambdagoalpha/v2"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/constructs-go/constructs/v10"
 	j "github.com/aws/jsii-runtime-go"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 
 const DomainName = "id.assume.ryanjarv.sh"
 const ValidationDomain = "ryanjarv.sh"
+const SandboxRoleArn = "arn:aws:iam::557690612472:role/assume-role-id-svc"
 
 func NewAssumeRoleIdStack(scope constructs.Construct, id string) cdk.Stack {
 	stack := cdk.NewStack(scope, &id, &cdk.StackProps{
@@ -70,32 +72,20 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 		Entry:        j.String("web"),
 		ModuleDir:    j.String("web"),
 		Environment: &map[string]*string{
-			"ACCOUNT_ID": cdk.Aws_ACCOUNT_ID(),
-			"BUCKET":     bucket.BucketName(),
+			"ACCOUNT_ID":       cdk.Aws_ACCOUNT_ID(),
+			"BUCKET":           bucket.BucketName(),
+			"SANDBOX_ROLE_ARN": aws.String(SandboxRoleArn),
 		},
 		Timeout: cdk.Duration_Seconds(j.Number(60)),
 	})
 	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
 		Actions: &[]*string{
-			j.String("iam:CreateRole"),
-			j.String("iam:TagRole"),
-			j.String("iam:DeleteRole"),
-			j.String("iam:ListRoles"),
+			j.String("sts:AssumeRole"),
 		},
 		Resources: &[]*string{
-			j.String("arn:aws:iam::*:role/*-assume-role-id"),
+			j.String(SandboxRoleArn),
 		},
 	}))
-	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
-		Actions: &[]*string{
-			j.String("ec2:DescribeRegions"),
-			j.String("cloudtrail:LookupEvents"),
-		},
-		Resources: &[]*string{
-			j.String("*"),
-		},
-	}))
-
 	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
 		Actions: &[]*string{
 			j.String("s3:CreateAccessPoint"),

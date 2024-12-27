@@ -7,4 +7,4 @@ deploy:
 	cdk deploy --profile $(PROFILE)
 
 test:
-	AWS_REGION=us-east-1 AWS_PROFILE=$(PROFILE) BUCKET=assumeroleidstack-fnbucket241dca00-glnkhaluessv ACCOUNT_ID=$$(aws --profile $(PROFILE) sts get-caller-identity --query Account --out text) DEBUG=1 go run -C web main.go
+	AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= AWS_SESSION_TOKEN= AWS_REGION=us-east-1 AWS_PROFILE=$(PROFILE) BUCKET=assumeroleidstack-fnbucket241dca00-glnkhaluessv SANDBOX_ROLE_ARN=arn:aws:iam::557690612472:role/assume-role-id-svc ACCOUNT_ID=$$(aws --profile $(PROFILE) sts get-caller-identity --query Account --out text) DEBUG=1 go run -C web main.go

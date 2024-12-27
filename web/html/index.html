@@ -25,6 +25,23 @@
             font-weight: bold;
         }
 
+        .section {
+            margin: 15px;
+        }
+
+        .control-row {
+            margin: 10px;
+        }
+
+        .control {
+            margin-left: 5px;
+            margin-right: 5px;
+        }
+
+        .option {
+            margin: 10px;
+        }
+
         /* Spinner positioning */
         #pollingIndicator {
             display: none; /* Hidden by default */
@@ -36,20 +53,41 @@
     <h1 class="mb-4">AWS Role Generator</h1>
 
     <!-- Align Button and Role ARN Input on the Same Line -->
+    <div class="section border-top border-bottom">
+        <div class="row align-items-end section control-row">
+            <input type="text" class="form-control col-md-8 control" id="requestedRoleName" placeholder="Role Name">
+            <div class="form-check option control col-md-3">
+                <input id="requireExternalId" class="form-check-input" type="checkbox" value="">
+                <label class="form-check-label" for="requireExternalId">
+                    Require External ID
+                </label>
+            </div>
+        </div>
+
+        <div class="row align-items-end section control-row">
+            <button id="generateRoleBtn" class="btn btn-primary w-100 col-md-2 control">Generate Role</button>
+        </div>
+    </div>
+
+    <div class="h4 pb-2 mb-4 border-top border-bottom section">
+        <div class="row align-items-end control-row">
+            <input type="text" class="form-control col-md-6 control" id="roleArn" placeholder="Role ARN" readonly>
+            <button id="copyArnButton" type="button" class="btn btn-md btn-primary col-md-2 control"
+                    data-toggle="popover"
+                    title="Copied!" data-content="Copied!">Copy Arn
+            </button>
+        </div>
+
+        <div class="row align-items-end control-row">
+            <input type="text" class="form-control col-md-6 control" id="roleName" placeholder="Role Name" readonly>
+            <button id="copyNameButton" type="button" class="btn btn-md btn-primary col-md-2 control"
+                    data-toggle="popover"
+                    title="Copied!" data-content="Copied!">Copy Name
+            </button>
+        </div>
+
+    </div>
     <div class="row align-items-end">
-        <div class="col-md-2">
-            <button id="generateRoleBtn" class="btn btn-primary w-100">Generate Role</button>
-        </div>
-        <div class="col-md-2">
-            <input type="text" class="form-control" id="rolePrefix" placeholder="Role Prefix">
-        </div>
-        <div class="col-md-6">
-            <input type="text" class="form-control" id="roleArn" placeholder="Role ARN" readonly>
-        </div>
-        <div class="col-md-2">
-            <button id="copyButton" type="button" class="btn btn-md btn-primary" data-toggle="popover" title="Copied!" data-content="Copied!">Copy</button>
-<!--            <a id="copyButton" tabindex="0" class="btn btn-md btn-primary" role="button" data-toggle="popover" data-trigger="focus" title="Copied!" data-content="Copied!">Dismissible popover</a>-->
-        </div>
     </div>
 
     <!-- Polling Indicator -->
@@ -78,6 +116,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         const generateRoleBtn = document.getElementById('generateRoleBtn');
         const roleArnInput = document.getElementById('roleArn');
+        const roleNameInput = document.getElementById('roleName');
         const eventsContainer = document.getElementById('eventsContainer');
         const pollingIndicator = document.getElementById('pollingIndicator');
         let pollingInterval = null;
@@ -89,8 +128,10 @@
                 generateRoleBtn.disabled = true;
                 generateRoleBtn.textContent = 'Generating...';
 
-                // Fetch role ARN
-                const response = await fetch(`/role?rolePrefix=${document.getElementById('rolePrefix').value}`, {
+                let requestedRoleName = document.getElementById('requestedRoleName').value;
+                const requireExternalId = !!document.getElementById('requireExternalId').checked
+
+                const response = await fetch(`/role?roleName=${requestedRoleName}&requireExternalId=${requireExternalId}`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json'
@@ -105,6 +146,7 @@
                 const roleNameMatch = roleArn.match(/role\/([^"]+)$/);
                 if (!roleNameMatch) throw new Error('Invalid role ARN format');
                 const roleName = roleNameMatch[1];
+                roleNameInput.value = roleName;
 
                 // Start polling
                 startPolling(roleName);
@@ -132,6 +174,8 @@
                 if (!response.ok) throw new Error('Failed to poll events');
                 const data = await response.json();
                 const events = data.results;
+
+                events.sort((a, b) => new Date(b.time) - new Date(a.time));
 
                 events.forEach(event => {
                     if (!seenEventIds.has(event.event_id)) {
@@ -265,13 +309,27 @@
 
 
             // Append the card to the events container
-            eventsContainer.prepend(card);
+            eventsContainer.appendChild(card);
         }
     });
 
+    document.getElementById('copyNameButton').addEventListener('click', function () {
+        const textField = document.getElementById('roleName');
+        // Use the Clipboard API
+        navigator.clipboard.writeText(textField.value)
+            .then(() => {
+                setTimeout(() => {
+                    $('#copyButton').popover('toggle')
+                }, 1000);
+            })
+            .catch(err => {
+                // Fallback for older browsers or if permission is denied
+                fallbackCopyText(textField);
+            });
+    });
 
 
-    document.getElementById('copyButton').addEventListener('click', function() {
+    document.getElementById('copyArnButton').addEventListener('click', function () {
         const textField = document.getElementById('roleArn');
         // Use the Clipboard API
         navigator.clipboard.writeText(textField.value)

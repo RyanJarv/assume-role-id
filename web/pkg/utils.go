@@ -3,6 +3,10 @@ package pkg
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/arn"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"io"
 	"log"
 	"math/rand"
@@ -95,4 +99,46 @@ func Keys[K comparable, V any](m map[K]V) []K {
 func TryMarshal(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
+}
+
+func GetResourceName(s string) (string, error) {
+	parsed, err := arn.Parse(s)
+	if err != nil {
+		return "", fmt.Errorf("parsing arn: %w", err)
+	}
+	p := strings.Split(parsed.Resource, "/")
+	name := p[len(p)-1]
+	return name, nil
+}
+
+func Must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
+func DeleteRole(ctx *Context, client *iam.Client, name string) error {
+	resp, err := client.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{
+		RoleName: aws.String(name),
+	})
+	if err != nil {
+		return fmt.Errorf("listing attached policies %s: %w", name, err)
+	}
+
+	for _, policy := range resp.AttachedPolicies {
+		if _, err := client.DetachRolePolicy(ctx, &iam.DetachRolePolicyInput{
+			RoleName:  aws.String(name),
+			PolicyArn: policy.PolicyArn,
+		}); err != nil {
+			return fmt.Errorf("detaching policy %s: %w", *policy.PolicyArn, err)
+		}
+	}
+
+	if _, err := client.DeleteRole(ctx, &iam.DeleteRoleInput{
+		RoleName: aws.String(name),
+	}); err != nil {
+		return fmt.Errorf("deleting role: %v", err)
+	}
+	return nil
 }
