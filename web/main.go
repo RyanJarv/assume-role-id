@@ -28,6 +28,15 @@ import (
 //go:embed html
 var htmlFs embed.FS
 
+var (
+	accountId      = pkg.MustGetenv("ACCOUNT_ID")
+	bucket         = pkg.MustGetenv("BUCKET")
+	sandboxRoleArn = pkg.MustGetenv("SANDBOX_ROLE_ARN")
+
+	// Don't go looking around for this, it's a secret.
+	superSecretPathPrefix = pkg.MustGetenv("SUPER_SECRET_PATH_PREFIX")
+)
+
 func main() {
 	err := Run()
 	if err != nil {
@@ -37,21 +46,6 @@ func main() {
 
 func Run() error {
 	ctx := pkg.NewContext(context.Background())
-
-	accountId := os.Getenv("ACCOUNT_ID")
-	if accountId == "" {
-		return fmt.Errorf("missing ACCOUNT_ID")
-	}
-
-	bucket := os.Getenv("BUCKET")
-	if bucket == "" {
-		return fmt.Errorf("missing BUCKET")
-	}
-
-	sandboxRoleArn := os.Getenv("SANDBOX_ROLE_ARN")
-	if sandboxRoleArn == "" {
-		return fmt.Errorf("missing SANDBOX_ROLE_ARN")
-	}
 
 	svcArn, err := arn.Parse(sandboxRoleArn)
 	if err != nil {
@@ -111,11 +105,12 @@ func Run() error {
 	if err != nil {
 		return fmt.Errorf("getting sub filesystem: %w", err)
 	}
-
+	prefix := "/" + superSecretPathPrefix
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServerFS(sub))
-	mux.HandleFunc("/role", h.provisionRole)
-	mux.HandleFunc("/poll/{name}", h.pollEvents)
+
+	mux.Handle(prefix+"/", http.StripPrefix(prefix, http.FileServerFS(sub)))
+	mux.HandleFunc(prefix+"/role", h.provisionRole)
+	mux.HandleFunc(prefix+"/poll/{name}", h.pollEvents)
 
 	if _, ok := os.LookupEnv("AWS_LAMBDA_FUNCTION_NAME"); ok {
 		ctx.Debug.Printf("running in lambda mode")

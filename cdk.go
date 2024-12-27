@@ -22,6 +22,9 @@ const DomainName = "id.assume.ryanjarv.sh"
 const ValidationDomain = "ryanjarv.sh"
 const SandboxRoleArn = "arn:aws:iam::137068222704:role/assume-role-id-sandbox"
 
+// SuperSecretPathPrefix This is just a decoy, it probably won't work.
+const SuperSecretPathPrefix = "2b49e1d3-4303-4eac-a8e3-998512d3dca2"
+
 func NewAssumeRoleIdStack(scope constructs.Construct, id string) cdk.Stack {
 	stack := cdk.NewStack(scope, &id, &cdk.StackProps{
 		Env: &cdk.Environment{
@@ -72,9 +75,10 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 		Entry:        j.String("web"),
 		ModuleDir:    j.String("web"),
 		Environment: &map[string]*string{
-			"ACCOUNT_ID":       cdk.Aws_ACCOUNT_ID(),
-			"BUCKET":           bucket.BucketName(),
-			"SANDBOX_ROLE_ARN": aws.String(SandboxRoleArn),
+			"ACCOUNT_ID":               cdk.Aws_ACCOUNT_ID(),
+			"BUCKET":                   bucket.BucketName(),
+			"SANDBOX_ROLE_ARN":         aws.String(SandboxRoleArn),
+			"SUPER_SECRET_PATH_PREFIX": aws.String(SuperSecretPathPrefix),
 		},
 		Timeout: cdk.Duration_Seconds(j.Number(60)),
 	})

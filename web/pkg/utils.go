@@ -142,3 +142,11 @@ func DeleteRole(ctx *Context, client *iam.Client, name string) error {
 	}
 	return nil
 }
+
+func MustGetenv(name string) string {
+	v := os.Getenv(name)
+	if v == "" {
+		panic(fmt.Sprintf("missing env var: %s", name))
+	}
+	return v
+}
