@@ -20,7 +20,7 @@ import (
 
 const DomainName = "id.assume.ryanjarv.sh"
 const ValidationDomain = "ryanjarv.sh"
-const SandboxRoleArn = "arn:aws:iam::557690612472:role/assume-role-id-svc"
+const SandboxRoleArn = "arn:aws:iam::137068222704:role/assume-role-id-sandbox"
 
 func NewAssumeRoleIdStack(scope constructs.Construct, id string) cdk.Stack {
 	stack := cdk.NewStack(scope, &id, &cdk.StackProps{
