@@ -10,6 +10,7 @@ import (
 	lambda "github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	route53 "github.com/aws/aws-cdk-go/awscdk/v2/awsroute53"
 	s3 "github.com/aws/aws-cdk-go/awscdk/v2/awss3"
+	ssm "github.com/aws/aws-cdk-go/awscdk/v2/awsssm"
 	golambda "github.com/aws/aws-cdk-go/awscdklambdagoalpha/v2"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/constructs-go/constructs/v10"
@@ -70,6 +71,16 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 		}),
 	})
 
+	secret := ssm.NewStringParameter(scope, j.String("secret"), &ssm.StringParameterProps{
+		ParameterName: j.String("/assume-role-id/secret"),
+		Description:   j.String("Secret for making and decrypting role tokens"),
+		Tier:          ssm.ParameterTier_STANDARD,
+
+		// The lambda will update this if an empty string.
+		StringValue: j.String(""),
+		DataType:    ssm.ParameterDataType_TEXT,
+	})
+
 	function := golambda.NewGoFunction(scope, j.String("function-id"), &golambda.GoFunctionProps{
 		Architecture: lambda.Architecture_ARM_64(),
 		Entry:        j.String("web"),
@@ -79,9 +90,14 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 			"BUCKET":                   bucket.BucketName(),
 			"SANDBOX_ROLE_ARN":         aws.String(SandboxRoleArn),
 			"SUPER_SECRET_PATH_PREFIX": aws.String(SuperSecretPathPrefix),
+			"SECRET_ARN":               secret.ParameterArn(),
 		},
 		Timeout: cdk.Duration_Seconds(j.Number(60)),
 	})
+
+	secret.GrantRead(function.Role())
+	secret.GrantWrite(function.Role())
+
 	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
 		Actions: &[]*string{
 			j.String("sts:AssumeRole"),

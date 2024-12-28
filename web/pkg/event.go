@@ -50,8 +50,27 @@ type RequestParameters struct {
 }
 
 type UserIdentity struct {
-	Type        string `json:"type,omitempty"`
-	PrincipalId string `json:"principalId,omitempty"`
-	AccountId   string `json:"accountId,omitempty"`
-	InvokedBy   string `json:"invokedBy,omitempty"`
+	Type           string         `json:"type,omitempty"`
+	PrincipalId    string         `json:"principalId,omitempty"`
+	AccountId      string         `json:"accountId,omitempty"`
+	InvokedBy      string         `json:"invokedBy,omitempty"`
+	SessionContext SessionContext `json:"sessionContext,omitempty"`
+}
+
+type SessionContext struct {
+	SessionIssuer       SessionIssuer `json:"sessionIssuer"`
+	WebIdFederationData struct {
+	} `json:"webIdFederationData"`
+	Attributes struct {
+		CreationDate     time.Time `json:"creationDate"`
+		MfaAuthenticated string    `json:"mfaAuthenticated"`
+	} `json:"attributes"`
+}
+
+type SessionIssuer struct {
+	Type        string `json:"type"`
+	PrincipalId string `json:"principalId"`
+	Arn         string `json:"arn"`
+	AccountId   string `json:"accountId"`
+	UserName    string `json:"userName"`
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/aws/aws-lambda-go/lambdaurl"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -14,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
-	"github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/ryanjarv/assume-role-id/web/pkg"
 	"io/fs"
@@ -22,7 +21,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 )
 
 //go:embed html
@@ -32,6 +30,7 @@ var (
 	accountId      = pkg.MustGetenv("ACCOUNT_ID")
 	bucket         = pkg.MustGetenv("BUCKET")
 	sandboxRoleArn = pkg.MustGetenv("SANDBOX_ROLE_ARN")
+	secretArn      = pkg.MustGetenv("SECRET_ARN")
 
 	// Don't go looking around for this, it's a secret.
 	superSecretPathPrefix = pkg.MustGetenv("SUPER_SECRET_PATH_PREFIX")
@@ -98,6 +97,7 @@ func Run() error {
 		iam:        iam.NewFromConfig(sandboxAccountCfg),
 		cloudtrail: GetCloudtrailClients(sandboxAccountCfg, regions),
 		scanner:    scanner,
+		secret:     pkg.Must(pkg.GetOrGenerateSecret(ctx, ssm.NewFromConfig(svcAccountCfg), secretArn)),
 	}
 	ctx.Debug.Printf("account id: %s, bucket: %s", h.scanner.AccountId, h.scanner.BucketName)
 
@@ -109,8 +109,9 @@ func Run() error {
 	mux := http.NewServeMux()
 
 	mux.Handle(prefix+"/", http.StripPrefix(prefix, http.FileServerFS(sub)))
-	mux.HandleFunc(prefix+"/role", h.provisionRole)
-	mux.HandleFunc(prefix+"/poll/{name}", h.pollEvents)
+	mux.HandleFunc(prefix+"/role/", h.provisionRole)
+	mux.HandleFunc(prefix+"/role/{name}", h.provisionRole)
+	mux.HandleFunc(prefix+"/poll/{token}", h.pollEvents)
 
 	if _, ok := os.LookupEnv("AWS_LAMBDA_FUNCTION_NAME"); ok {
 		ctx.Debug.Printf("running in lambda mode")
@@ -127,13 +128,13 @@ func Run() error {
 }
 
 func GetCloudtrailClients(cfg aws.Config, regions []string) map[string]*cloudtrail.Client {
-	cloudtrails := map[string]*cloudtrail.Client{}
+	clients := map[string]*cloudtrail.Client{}
 	for _, region := range regions {
-		cloudtrails[region] = cloudtrail.NewFromConfig(cfg, func(opts *cloudtrail.Options) {
+		clients[region] = cloudtrail.NewFromConfig(cfg, func(opts *cloudtrail.Options) {
 			opts.Region = region
 		})
 	}
-	return cloudtrails
+	return clients
 }
 
 type handler struct {
@@ -142,100 +143,76 @@ type handler struct {
 	cloudtrail map[string]*cloudtrail.Client
 	accountId  string
 	scanner    *pkg.Scanner
+	secret     []byte
 }
 
 // NOTE: We're using GET requests here because cloudFront + lambda urls seem to have issues with POST requests.
 //
 //	See: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-lambda.html#create-oac-overview-lambda
 func (h *handler) provisionRole(w http.ResponseWriter, r *http.Request) {
-	roleName := r.URL.Query().Get("roleName")
+	if v := r.Header.Get("Accept"); v != "application/json" {
+		h.ctx.Error.Printf("invalid accept header: %s", v)
+		http.Error(w, "invalid accept header", http.StatusBadRequest)
+		return
+	}
+
+	roleName := r.PathValue("name")
 	requireExternalId := false
 	if v := r.URL.Query().Get("requireExternalId"); strings.ToLower(v) != "true" {
 		requireExternalId = true
 	}
 
-	if roleName == "" {
-		roleName = pkg.RandStringRunes(16)
-	}
-	if role, err := h.iam.GetRole(h.ctx, &iam.GetRoleInput{
-		RoleName: aws.String(roleName),
-	}); err != nil {
-		var notFoundErr *types.NoSuchEntityException
-		if ok := errors.As(err, &notFoundErr); ok {
-			h.ctx.Debug.Printf("IAM role '%s' does not exist.\n", roleName)
-		} else {
-			h.ctx.Error.Printf("getting role: %v", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
-	} else if !pkg.IsOurRole(*role.Role) {
-		h.ctx.Error.Printf("forbidden role name: %s", roleName)
-		http.Error(w, "forbidden role name", http.StatusForbidden)
-		return
-	} else {
-		if err := pkg.DeleteRole(h.ctx, h.iam, roleName); err != nil {
-			h.ctx.Error.Printf("deleting role: %v", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	result, err := pkg.ProvisionRole(h.ctx, h.iam, &pkg.ProvisionRoleRequest{
-		RoleName:          roleName,
-		RequireExternalId: requireExternalId,
-	})
+	result, err := pkg.CreateRole(h.ctx, h.iam, roleName, requireExternalId, h.secret)
 	if err != nil {
-		h.ctx.Error.Printf("provisioning role: %v", err)
+		h.ctx.Error.Printf("creating role: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
-	j, _ := json.Marshal(result)
-	w.Write(j)
+	resp, err := json.Marshal(result)
+	if err != nil {
+		h.ctx.Error.Printf("marshalling result: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := w.Write(resp); err != nil {
+		h.ctx.Error.Printf("writing response: %v", err)
+	}
 }
 
 func (h *handler) pollEvents(w http.ResponseWriter, r *http.Request) {
-	h.ctx.Debug.Printf("polling events for %s", r.PathValue("name"))
-
-	name := r.PathValue("name")
-	var createdAt time.Time
-
-	if role, err := h.iam.GetRole(h.ctx, &iam.GetRoleInput{
-		RoleName: aws.String(name),
-	}); err != nil {
-		h.ctx.Error.Printf("getting role: %v", err)
-		http.Error(w, "role not found", http.StatusNotFound)
+	if v := r.Header.Get("Accept"); v != "application/json" {
+		h.ctx.Error.Printf("invalid accept header: %s", v)
+		http.Error(w, "invalid accept header", http.StatusBadRequest)
 		return
-	} else if !pkg.IsOurRole(*role.Role) {
-		h.ctx.Error.Printf("role is not ours: %s", name)
-		http.Error(w, "role was not created by assume role id", http.StatusForbidden)
-		return
-	} else {
-		createdAt = *role.Role.CreateDate
 	}
-	params, err := pkg.PollEvents(h.ctx, h.cloudtrail, h.scanner, name, createdAt.UTC())
+	h.ctx.Debug.Printf("polling events for %s", r.PathValue("token"))
+
+	result, err := pkg.PollEvents(h.ctx, &pkg.PollEventsInput{
+		Token:      r.PathValue("token"),
+		Iam:        h.iam,
+		CloudTrail: h.cloudtrail,
+		Scanner:    h.scanner,
+		Secret:     h.secret,
+	})
 	if err != nil {
-		h.ctx.Error.Printf("provisioning role: %v", err)
+		h.ctx.Error.Printf("polling events: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	if params == nil {
-		h.ctx.Error.Printf("assume role events not found for: %s", name)
-		http.Error(w, "assume role events not found", http.StatusNotFound)
-	}
-
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
-	j, err := json.Marshal(params)
+	resp, err := json.Marshal(result)
 	if err != nil {
 		h.ctx.Error.Printf("marshalling params: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 
-	if _, err := w.Write(j); err != nil {
+	if _, err := w.Write(resp); err != nil {
 		h.ctx.Error.Printf("writing response: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}

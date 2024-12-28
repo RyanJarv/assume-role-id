@@ -101,7 +101,7 @@ func TryMarshal(v any) string {
 	return string(b)
 }
 
-func GetResourceName(s string) (string, error) {
+func GetResourceNameFromArn(s string) (string, error) {
 	parsed, err := arn.Parse(s)
 	if err != nil {
 		return "", fmt.Errorf("parsing arn: %w", err)

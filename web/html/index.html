@@ -137,19 +137,26 @@
                         'Content-Type': 'application/json'
                     },
                 });
-                if (!response.ok) throw new Error('Failed to fetch role ARN');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch role ARN');
+                }
                 const data = await response.json();
                 const roleArn = data.role_arn;
                 roleArnInput.value = roleArn;
 
                 // Extract role name from ARN
                 const roleNameMatch = roleArn.match(/role\/([^"]+)$/);
-                if (!roleNameMatch) throw new Error('Invalid role ARN format');
-                const roleName = roleNameMatch[1];
-                roleNameInput.value = roleName;
+                if (!roleNameMatch) {
+                    throw new Error('Invalid role ARN format');
+                }
+                roleNameInput.value = roleNameMatch[1];
+
+                if (!data.token) {
+                    console.log('No poll secret found in response');
+                }
 
                 // Start polling
-                startPolling(roleName);
+                startPolling(data.token);
             } catch (error) {
                 alert(error.message);
                 generateRoleBtn.disabled = false;
@@ -157,20 +164,20 @@
             }
         });
 
-        function startPolling(roleName) {
+        function startPolling(token) {
             // Show polling indicator
             pollingIndicator.style.display = 'flex';
 
             // Initial poll immediately
-            pollEvents(roleName);
+            pollEvents(token);
 
             // Set interval to poll every 5 seconds
-            pollingInterval = setInterval(() => pollEvents(roleName), 10000);
+            pollingInterval = setInterval(() => pollEvents(token), 10000);
         }
 
-        async function pollEvents(roleName) {
+        async function pollEvents(token) {
             try {
-                const response = await fetch(`poll/${roleName}`);
+                const response = await fetch(`poll/${token}`);
                 if (!response.ok) throw new Error('Failed to poll events');
                 const data = await response.json();
                 const events = data.results;
