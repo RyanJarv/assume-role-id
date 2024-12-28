@@ -1,10 +1,12 @@
 # Assume Role ID
 
-Web service for SaaS provider research. Hosted at [https://id.assume.ryanjarv.sh](https://id.assume.ryanjarv.sh).
+Web service for generating IAM roles. Hosted at [https://id.assume.ryanjarv.sh](https://id.assume.ryanjarv.sh).
 
 ## Deploy
 
 Update the following: 
+
+TODO: Update this
 
 * The PROFILE variable in the Makefile to the AWS CLI profile you want to use. 
 * The DomainName and ValidationDomain constants in [cdk.go](./cdk.go) to the domain you want to use.
