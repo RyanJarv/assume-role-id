@@ -30,7 +30,7 @@ var (
 	accountId      = pkg.MustGetenv("ACCOUNT_ID")
 	bucket         = pkg.MustGetenv("BUCKET")
 	sandboxRoleArn = pkg.MustGetenv("SANDBOX_ROLE_ARN")
-	secretArn      = pkg.MustGetenv("SECRET_ARN")
+	secretName     = pkg.MustGetenv("SECRET_NAME")
 
 	// Don't go looking around for this, it's a secret.
 	superSecretPathPrefix = pkg.MustGetenv("SUPER_SECRET_PATH_PREFIX")
@@ -97,7 +97,7 @@ func Run() error {
 		iam:        iam.NewFromConfig(sandboxAccountCfg),
 		cloudtrail: GetCloudtrailClients(sandboxAccountCfg, regions),
 		scanner:    scanner,
-		secret:     pkg.Must(pkg.GetOrGenerateSecret(ctx, ssm.NewFromConfig(svcAccountCfg), secretArn)),
+		secret:     pkg.Must(pkg.GetOrGenerateSecret(ctx, ssm.NewFromConfig(svcAccountCfg), secretName)),
 	}
 	ctx.Debug.Printf("account id: %s, bucket: %s", h.scanner.AccountId, h.scanner.BucketName)
 

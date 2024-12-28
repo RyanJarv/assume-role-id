@@ -114,7 +114,7 @@ func createRole(ctx *Context, client *iam.Client, secret []byte, req *CreateRole
 	// Shouldn't matter much but just to be safe.
 	if _, err := client.AttachRolePolicy(ctx, &iam.AttachRolePolicyInput{
 		RoleName:  role.Role.RoleName,
-		PolicyArn: aws.String("arn:aws:Iam::aws:policy/AWSDenyAll"),
+		PolicyArn: aws.String("arn:aws:iam::aws:policy/AWSDenyAll"),
 	}); err != nil {
 		return nil, fmt.Errorf("attaching policy: %w", err)
 	}

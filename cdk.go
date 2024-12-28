@@ -10,7 +10,6 @@ import (
 	lambda "github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	route53 "github.com/aws/aws-cdk-go/awscdk/v2/awsroute53"
 	s3 "github.com/aws/aws-cdk-go/awscdk/v2/awss3"
-	ssm "github.com/aws/aws-cdk-go/awscdk/v2/awsssm"
 	golambda "github.com/aws/aws-cdk-go/awscdklambdagoalpha/v2"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/constructs-go/constructs/v10"
@@ -34,7 +33,7 @@ func NewAssumeRoleIdStack(scope constructs.Construct, id string) cdk.Stack {
 		},
 	})
 
-	fnDist, zone, bucket := NewAssumeRoleIdFunction(stack)
+	fnDist, zone, bucket, secretName := NewAssumeRoleIdFunction(stack)
 
 	cdk.NewCfnOutput(stack, j.String("UrlOutput"), &cdk.CfnOutputProps{
 		Value: fnDist.DomainName(),
@@ -54,10 +53,14 @@ func NewAssumeRoleIdStack(scope constructs.Construct, id string) cdk.Stack {
 		Value: cdk.Aws_ACCOUNT_ID(),
 	})
 
+	cdk.NewCfnOutput(stack, j.String("SecretName"), &cdk.CfnOutputProps{
+		Value: aws.String(secretName),
+	})
+
 	return stack
 }
 
-func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.HostedZone, s3.Bucket) {
+func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.HostedZone, s3.Bucket, string) {
 	scope := constructs.NewConstruct(stack, j.String("fn"))
 
 	bucket := s3.NewBucket(scope, j.String("bucket"), &s3.BucketProps{
@@ -71,15 +74,8 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 		}),
 	})
 
-	secret := ssm.NewStringParameter(scope, j.String("secret"), &ssm.StringParameterProps{
-		ParameterName: j.String("/assume-role-id/secret"),
-		Description:   j.String("Secret for making and decrypting role tokens"),
-		Tier:          ssm.ParameterTier_STANDARD,
-
-		// The lambda will update this if an empty string.
-		StringValue: j.String(""),
-		DataType:    ssm.ParameterDataType_TEXT,
-	})
+	secretName := "/assume-role-id/secret"
+	secretArn := fmt.Sprintf("arn:aws:ssm:%s:%s:parameter%s", *cdk.Aws_REGION(), *cdk.Aws_ACCOUNT_ID(), secretName)
 
 	function := golambda.NewGoFunction(scope, j.String("function-id"), &golambda.GoFunctionProps{
 		Architecture: lambda.Architecture_ARM_64(),
@@ -90,13 +86,20 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 			"BUCKET":                   bucket.BucketName(),
 			"SANDBOX_ROLE_ARN":         aws.String(SandboxRoleArn),
 			"SUPER_SECRET_PATH_PREFIX": aws.String(SuperSecretPathPrefix),
-			"SECRET_ARN":               secret.ParameterArn(),
+			"SECRET_NAME":              aws.String(secretName),
 		},
 		Timeout: cdk.Duration_Seconds(j.Number(60)),
 	})
 
-	secret.GrantRead(function.Role())
-	secret.GrantWrite(function.Role())
+	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
+		Actions: &[]*string{
+			j.String("ssm:GetParameter"),
+			j.String("ssm:PutParameter"),
+		},
+		Resources: &[]*string{
+			j.String(secretArn),
+		},
+	}))
 
 	function.AddToRolePolicy(iam.NewPolicyStatement(&iam.PolicyStatementProps{
 		Actions: &[]*string{
@@ -152,7 +155,7 @@ func NewAssumeRoleIdFunction(stack cdk.Stack) (cloudfront.Distribution, route53.
 		RecordName: j.String(DomainName + "."),
 	})
 
-	return fnDist, zone, bucket
+	return fnDist, zone, bucket, secretName
 }
 
 func main() {

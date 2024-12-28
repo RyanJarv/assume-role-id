@@ -3,23 +3,26 @@ package pkg
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
-func GetOrGenerateSecret(ctx *Context, client *ssm.Client, secretArn string) ([]byte, error) {
+func GetOrGenerateSecret(ctx *Context, client *ssm.Client, secretName string) ([]byte, error) {
+	ctx.Debug.Printf("fetching secret %s", secretName)
 	resp, err := client.GetParameter(ctx, &ssm.GetParameterInput{
-		Name:           aws.String(secretArn),
+		Name:           aws.String(secretName),
 		WithDecryption: aws.Bool(true),
 	})
 	if err != nil {
+		var notFoundErr *types.ParameterNotFound
+		if ok := errors.As(err, &notFoundErr); ok {
+			ctx.Info.Printf("creating new secret %s", secretName)
+			return CreateSecret(ctx, client, secretName)
+		}
 		return nil, fmt.Errorf("failed to get parameter: %w", err)
-	}
-
-	if *resp.Parameter.Value == "" {
-		return CreateSecret(ctx, client, secretArn)
 	}
 
 	secret, err := base64.StdEncoding.DecodeString(*resp.Parameter.Value)
