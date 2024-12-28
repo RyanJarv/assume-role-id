@@ -131,12 +131,7 @@
                 let requestedRoleName = document.getElementById('requestedRoleName').value;
                 const requireExternalId = !!document.getElementById('requireExternalId').checked
 
-                const response = await fetch(`role?roleName=${requestedRoleName}&requireExternalId=${requireExternalId}`, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                });
+                const response = await fetch(`role/${requestedRoleName}?requireExternalId=${requireExternalId}`);
                 if (!response.ok) {
                     throw new Error('Failed to fetch role ARN');
                 }

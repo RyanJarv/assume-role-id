@@ -34,8 +34,8 @@ func GetRoleFromToken(ctx *Context, client *iam.Client, token string, secret []b
 		return nil, fmt.Errorf("getting role: %v", err)
 	} else if !IsOurRole(*role.Role) {
 		return nil, fmt.Errorf("forbidden role name: %s", name)
-	} else if *role.Role.AssumeRolePolicyDocument != expectedPrincipalId {
-		return nil, fmt.Errorf("principal id did not match: %s", name)
+	} else if id := *role.Role.RoleId; id != expectedPrincipalId {
+		return nil, fmt.Errorf("principal id did not match (actual != expected): %s != %s", id, expectedPrincipalId)
 	}
 
 	return role, nil

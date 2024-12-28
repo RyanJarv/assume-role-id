@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3control"
 	s3controlTypes "github.com/aws/aws-sdk-go-v2/service/s3control/types"
 	"github.com/aws/smithy-go"
+	"golang.org/x/sync/syncmap"
 )
 
 type NewScannerInput struct {
@@ -26,6 +27,7 @@ func NewScanner(input *NewScannerInput) (*Scanner, error) {
 		Region:          "us-east-1",
 		AccessPointName: "assume-role-id",
 		BucketName:      input.Bucket,
+		cache:           syncmap.Map{},
 	}
 	if input.Config.Region != "" {
 		scanner.Region = input.Config.Region
@@ -40,9 +42,16 @@ type Scanner struct {
 	Region          string
 	BucketName      string
 	AccessPointName string
+	cache           syncmap.Map
 }
 
-func (s *Scanner) LookupPrincipalId(ctx *Context, arn string) (string, error) {
+func (s *Scanner) LookupPrincipalId(ctx *Context, principalId string) (string, error) {
+	if cached, ok := s.cache.Load(principalId); ok {
+		ctx.Debug.Printf("cache hit: %s", principalId)
+		return cached.(string), nil
+	}
+	ctx.Debug.Printf("cache miss: %s", principalId)
+
 	name := s.AccessPointName + "-" + RandStringRunes(8)
 	accesspointArn, err := SetupAccessPoint(ctx, s.s3control, name, s.AccountId, s.BucketName)
 	if err != nil {
@@ -64,7 +73,7 @@ func (s *Scanner) LookupPrincipalId(ctx *Context, arn string) (string, error) {
 				Action:   "*",
 				Resource: accesspointArn,
 				Principal: PolicyPrincipal{
-					AWS: arn,
+					AWS: principalId,
 				},
 			},
 		},
@@ -94,6 +103,8 @@ func (s *Scanner) LookupPrincipalId(ctx *Context, arn string) (string, error) {
 	if err := json.Unmarshal([]byte(*resp.Policy), updatedPolicy); err != nil {
 		return "", fmt.Errorf("unmarshalling policy: %w", err)
 	}
+
+	s.cache.Store(principalId, updatedPolicy.Statement[0].Principal.AWS)
 
 	return updatedPolicy.Statement[0].Principal.AWS, nil
 }

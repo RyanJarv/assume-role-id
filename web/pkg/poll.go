@@ -63,6 +63,7 @@ func pollEvents(ctx *Context, params *PollEventsInput, roleName, principalId str
 				errors = append(errors, fmt.Errorf("poll: %w", err))
 				return
 			}
+			ctx.Debug.Printf("results for %s in %s: %s", roleName, region, TryMarshal(results))
 
 			if results != nil {
 				allResults = append(allResults, results...)
@@ -77,7 +78,6 @@ func pollEvents(ctx *Context, params *PollEventsInput, roleName, principalId str
 		return nil, fmt.Errorf("poll: failed to poll all regions")
 	}
 
-	ctx.Debug.Printf("results for %s: %s", roleName, TryMarshal(allResults))
 	return &PollEventsOutput{
 		RoleName: roleName,
 		Results:  allResults,
@@ -91,7 +91,6 @@ type AssumeRoleEvent struct {
 	UserAgent          string             `json:"user_agent"`
 	SourceIp           string             `json:"source_ip"`
 	SourcePrincipalArn string             `json:"source_principal_arn"`
-	UserIdentity       UserIdentity       `json:"user_identity"`
 	AssumeRoleParams   *RequestParameters `json:"assume_role_params"`
 	Events             []string
 }
@@ -143,7 +142,6 @@ func PollRegionEvents(ctx *Context, client *cloudtrail.Client, scanner *Scanner,
 				Region:             event.AwsRegion,
 				SourceIp:           event.SourceIPAddress,
 				UserAgent:          event.UserAgent,
-				UserIdentity:       event.UserIdentity,
 				SourcePrincipalArn: sourcePrincipalArn,
 				AssumeRoleParams:   &event.RequestParameters,
 				Events:             eventNames,
@@ -160,8 +158,6 @@ func PollRegionEvents(ctx *Context, client *cloudtrail.Client, scanner *Scanner,
 
 		ctx.Debug.Printf("looking up events with next Token %s", TryMarshal(nextToken))
 	}
-
-	ctx.Debug.Printf("results for %s: %s", roleName, TryMarshal(allResults))
 
 	return allResults, nil
 }

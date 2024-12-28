@@ -19,7 +19,7 @@ type CreateRoleRequest struct {
 
 type CreateRoleResponse struct {
 	RoleArn string `json:"role_arn"`
-	Token   string `json:"Token"`
+	Token   string `json:"token"`
 }
 
 func CreateRole(ctx *Context, client *iam.Client, roleName string, requireExternalId bool, secret []byte) (*CreateRoleResponse, error) {
@@ -45,14 +45,10 @@ func CreateRole(ctx *Context, client *iam.Client, roleName string, requireExtern
 		}
 	}
 
-	result, err := createRole(ctx, client, secret, &CreateRoleRequest{
+	return createRole(ctx, client, secret, &CreateRoleRequest{
 		RoleName:          roleName,
 		RequireExternalId: requireExternalId,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("creating role: %w", err)
-	}
-	return result, err
 }
 
 func createRole(ctx *Context, client *iam.Client, secret []byte, req *CreateRoleRequest) (*CreateRoleResponse, error) {
@@ -123,6 +119,8 @@ func createRole(ctx *Context, client *iam.Client, secret []byte, req *CreateRole
 	if err != nil {
 		return nil, fmt.Errorf("generating Token: %w", err)
 	}
+
+	ctx.Debug.Printf("issuing token %s for role %s", token, *role.Role.Arn)
 
 	return &CreateRoleResponse{
 		RoleArn: *role.Role.Arn,

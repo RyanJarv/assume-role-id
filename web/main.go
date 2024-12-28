@@ -150,13 +150,9 @@ type handler struct {
 //
 //	See: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-lambda.html#create-oac-overview-lambda
 func (h *handler) provisionRole(w http.ResponseWriter, r *http.Request) {
-	if v := r.Header.Get("Accept"); v != "application/json" {
-		h.ctx.Error.Printf("invalid accept header: %s", v)
-		http.Error(w, "invalid accept header", http.StatusBadRequest)
-		return
-	}
-
 	roleName := r.PathValue("name")
+	h.ctx.Debug.Printf("got request to create role %s", roleName)
+
 	requireExternalId := false
 	if v := r.URL.Query().Get("requireExternalId"); strings.ToLower(v) != "true" {
 		requireExternalId = true
@@ -184,12 +180,7 @@ func (h *handler) provisionRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) pollEvents(w http.ResponseWriter, r *http.Request) {
-	if v := r.Header.Get("Accept"); v != "application/json" {
-		h.ctx.Error.Printf("invalid accept header: %s", v)
-		http.Error(w, "invalid accept header", http.StatusBadRequest)
-		return
-	}
-	h.ctx.Debug.Printf("polling events for %s", r.PathValue("token"))
+	h.ctx.Debug.Printf("got request to poll events with token %s", r.PathValue("token"))
 
 	result, err := pkg.PollEvents(h.ctx, &pkg.PollEventsInput{
 		Token:      r.PathValue("token"),

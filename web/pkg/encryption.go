@@ -38,12 +38,12 @@ func Encrypt(plaintext string, key []byte) (string, error) {
 	finalCiphertext := append(nonce, ciphertext...)
 
 	// Encode the result as Base64 for easy storage/transmission
-	return base64.URLEncoding.EncodeToString(finalCiphertext), nil
+	return base64.RawURLEncoding.EncodeToString(finalCiphertext), nil
 }
 
 // Decrypt a Base64-encoded ciphertext using AES-GCM
 func Decrypt(ciphertext string, key []byte) (string, error) {
-	cipherBytes, err := base64.URLEncoding.DecodeString(ciphertext)
+	cipherBytes, err := base64.RawURLEncoding.DecodeString(ciphertext)
 	if err != nil {
 		return "", fmt.Errorf("failed to decode ciphertext: %w", err)
 	}
