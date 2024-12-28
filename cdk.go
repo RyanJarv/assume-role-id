@@ -23,7 +23,7 @@ const ValidationDomain = "ryanjarv.sh"
 const SandboxRoleArn = "arn:aws:iam::137068222704:role/assume-role-id-sandbox"
 
 // SuperSecretPathPrefix This is just a decoy, it probably won't work.
-const SuperSecretPathPrefix = "2b49e1d3-4303-4eac-a8e3-998512d3dca2"
+const SuperSecretPathPrefix = "b3ecdefe-1166-4c93-818f-982d17726fed"
 
 func NewAssumeRoleIdStack(scope constructs.Construct, id string) cdk.Stack {
 	stack := cdk.NewStack(scope, &id, &cdk.StackProps{
