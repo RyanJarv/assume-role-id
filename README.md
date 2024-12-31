@@ -19,7 +19,7 @@ Ideally you shouldn't be able to view events for roles you didn't generate, howe
 
 The service uses two AWS accounts, the first is the service account which is defined in [./cdk.go](./cdk.go). The second is a sandbox account that we use to generate world assumable roles which is set up manually.
 
-The only infrastructure in the sandbox account is an IAM Role that the lambda assumes during startup. It is configured [here](https://github.com/RyanJarv/assume-role-id/blob/d986d0347e8eb3795d8305a1e4b42bda8b6cbc07/cdk.go#L23), has a trust policy trusting the service account, and the identity policy can be found in the [#Deploy)[#deploy] section.
+The only infrastructure in the sandbox account is an IAM Role that the lambda assumes during startup. It is configured [here](https://github.com/RyanJarv/assume-role-id/blob/d986d0347e8eb3795d8305a1e4b42bda8b6cbc07/cdk.go#L23), has a trust policy trusting the service account, and the identity policy can be found in the [#Deploy](#deploy) section.
 
 The generated roles are tagged with `assume-role-id: true` and should all have the `AWSDenyAll` policy attached (although the role shouldn't have any access to anything either way). If the requested IAM Role exists it is deleted and recreated, but only if it has the right tags on the role. After the role is created a [encrypted token](https://github.com/RyanJarv/assume-role-id/blob/4a71662cc1536ce77e33a74fb162c0df0bbf081d/web/pkg/role_token.go#L14) is returned to the user, which can later be passed to the `/poll/` endpoint to retrieve associated events for the role. The encrypted token contains the role name and the principalId, associated events must match both, this way we don't return older events for an unrelated role with the same name.
 
