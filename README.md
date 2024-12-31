@@ -1,6 +1,6 @@
 # Assume Role ID
 
-RaaS (Roles as a Service) hosted at [https://id.assume.ryanjarv.sh](https://id.assume.ryanjarv.sh) to help you switch away from IAM Users... or probably more useful for research, or maybe honeypots, whatever you can think of tbh. Anyway, it generates world assumable roles and then poll's CloudTrail for `sts:AssumeRole` API calls to assume them. The service also returns API Actions called on each session, however the frontend doesn't display this yet.
+RaaS (Roles as a Service) hosted at [https://id.assume.ryanjarv.sh](https://id.assume.ryanjarv.sh) to help you switch away from IAM Users... or probably more useful for research, or maybe honeypots, whatever you can think of tbh. It generates world assumable roles and then poll's CloudTrail for `sts:AssumeRole` API calls to assume them. The service also returns API Actions called on each session, however the frontend doesn't display this yet.
 
 ## Usage
 
