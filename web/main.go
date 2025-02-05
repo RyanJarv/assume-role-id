@@ -118,7 +118,7 @@ func Run() error {
 		lambdaurl.Start(mux)
 	} else {
 		ctx.Debug.Printf("running in web server mode")
-		err := http.ListenAndServe(":8080", mux)
+		err := http.ListenAndServe(":8090", mux)
 		if err != nil {
 			return fmt.Errorf("listening and serving: %w", err)
 		}

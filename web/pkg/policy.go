@@ -6,11 +6,13 @@ type PolicyDocument struct {
 }
 
 type PolicyStatement struct {
-	Sid       string          `json:"Sid"`
-	Effect    string          `json:"Effect"`
-	Principal PolicyPrincipal `json:"Principal"`
-	Action    string          `json:"Action"`
-	Resource  string          `json:"Resource"`
+	Sid         string           `json:"Sid"`
+	Effect      string           `json:"Effect"`
+	Principal   *PolicyPrincipal `json:"Principal,omitempty"`
+	Action      []string         `json:"Action,omitempty"`
+	NotAction   []string         `json:"NotAction,omitempty"`
+	Resource    []string         `json:"Resource,omitempty"`
+	NotResource []string         `json:"NotResource,omitempty"`
 }
 
 type PolicyPrincipal struct {

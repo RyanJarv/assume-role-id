@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -107,10 +108,56 @@ func createRole(ctx *Context, client *iam.Client, secret []byte, req *CreateRole
 		return nil, fmt.Errorf("creating role: %w", err)
 	}
 
-	// Shouldn't matter much but just to be safe.
+	// Deny everything except what's allowed.
+	if _, err := client.PutRolePolicy(ctx, &iam.PutRolePolicyInput{
+		RoleName:   role.Role.RoleName,
+		PolicyName: aws.String("DenyAllOther"),
+		PolicyDocument: aws.String(string(Must(json.Marshal(PolicyDocument{
+			Version: "2012-10-17",
+			Statement: []PolicyStatement{
+				{
+					Sid:    "DenyAll",
+					Effect: "Deny",
+					NotAction: []string{
+						"iam:ListAttachedRolePolicies",
+					},
+					NotResource: []string{
+						*role.Role.Arn,
+					},
+				},
+			},
+		})))),
+	}); err != nil {
+		return nil, fmt.Errorf("attaching policy: %w", err)
+	}
+
+	// Some stuff checks the current role for attached policies.
+	if _, err := client.PutRolePolicy(ctx, &iam.PutRolePolicyInput{
+		RoleName:   role.Role.RoleName,
+		PolicyName: aws.String("ListAttachedRolePolicies"),
+		PolicyDocument: aws.String(string(Must(json.Marshal(PolicyDocument{
+			Version: "2012-10-17",
+			Statement: []PolicyStatement{
+				{
+					Sid:    "AllowSelfListAttachedRolePolicies",
+					Effect: "Allow",
+					Action: []string{
+						"iam:ListAttachedRolePolicies",
+					},
+					Resource: []string{
+						*role.Role.Arn,
+					},
+				},
+			},
+		})))),
+	}); err != nil {
+		return nil, fmt.Errorf("attaching policy: %w", err)
+	}
+
+	// Some stuff just needs SecurityAudit attached, so add that even though it won't do anything here.
 	if _, err := client.AttachRolePolicy(ctx, &iam.AttachRolePolicyInput{
 		RoleName:  role.Role.RoleName,
-		PolicyArn: aws.String("arn:aws:iam::aws:policy/AWSDenyAll"),
+		PolicyArn: aws.String("arn:aws:iam::aws:policy/SecurityAudit"),
 	}); err != nil {
 		return nil, fmt.Errorf("attaching policy: %w", err)
 	}
