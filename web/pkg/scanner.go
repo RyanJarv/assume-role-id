@@ -70,8 +70,8 @@ func (s *Scanner) LookupPrincipalId(ctx *Context, principalId string) (string, e
 			{
 				Sid:      "testrole",
 				Effect:   "Deny",
-				Action:   []string{"*"},
-				Resource: []string{accesspointArn},
+				Action:   "*",
+				Resource: accesspointArn,
 				Principal: &PolicyPrincipal{
 					AWS: principalId,
 				},

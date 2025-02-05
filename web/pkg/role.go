@@ -116,14 +116,10 @@ func createRole(ctx *Context, client *iam.Client, secret []byte, req *CreateRole
 			Version: "2012-10-17",
 			Statement: []PolicyStatement{
 				{
-					Sid:    "DenyAll",
-					Effect: "Deny",
-					NotAction: []string{
-						"iam:ListAttachedRolePolicies",
-					},
-					NotResource: []string{
-						*role.Role.Arn,
-					},
+					Sid:         "DenyAll",
+					Effect:      "Deny",
+					NotAction:   "iam:ListAttachedRolePolicies",
+					NotResource: *role.Role.Arn,
 				},
 			},
 		})))),
@@ -139,14 +135,10 @@ func createRole(ctx *Context, client *iam.Client, secret []byte, req *CreateRole
 			Version: "2012-10-17",
 			Statement: []PolicyStatement{
 				{
-					Sid:    "AllowSelfListAttachedRolePolicies",
-					Effect: "Allow",
-					Action: []string{
-						"iam:ListAttachedRolePolicies",
-					},
-					Resource: []string{
-						*role.Role.Arn,
-					},
+					Sid:      "AllowSelfListAttachedRolePolicies",
+					Effect:   "Allow",
+					Action:   "iam:ListAttachedRolePolicies",
+					Resource: *role.Role.Arn,
 				},
 			},
 		})))),
