@@ -21,7 +21,7 @@ The service uses two AWS accounts, the first is the service account which is def
 
 The only infrastructure in the sandbox account is an IAM Role that the lambda assumes during startup. It is configured [here](https://github.com/RyanJarv/assume-role-id/blob/d986d0347e8eb3795d8305a1e4b42bda8b6cbc07/cdk.go#L23), has a trust policy trusting the service account, and the identity policy can be found in the [#Deploy](#deploy) section.
 
-The generated roles are tagged with `assume-role-id: true` and should all have the `AWSDenyAll` policy attached (although the role shouldn't have any access to anything either way). If the requested IAM Role exists it is deleted and recreated, but only if it has the right tags on the role. After the role is created a [encrypted token](https://github.com/RyanJarv/assume-role-id/blob/4a71662cc1536ce77e33a74fb162c0df0bbf081d/web/pkg/role_token.go#L14) is returned to the user, which can later be passed to the `/poll/` endpoint to retrieve associated events for the role. The encrypted token contains the role name and the principalId, associated events must match both, this way we don't return older events for an unrelated role with the same name.
+The generated roles are tagged with `assume-role-id: true` and have a few safe permissions. If the requested IAM Role exists it is deleted and recreated, but only if it has the right tags on the role. After the role is created a [encrypted token](https://github.com/RyanJarv/assume-role-id/blob/4a71662cc1536ce77e33a74fb162c0df0bbf081d/web/pkg/role_token.go#L14) is returned to the user, which can later be passed to the `/poll/` endpoint to retrieve associated events for the role. The encrypted token contains the role name and the principalId, associated events must match both, this way we don't return older events for an unrelated role with the same name.
 
 
 ### Deploy
@@ -33,59 +33,59 @@ Make sure you have two AWS accounts, one to run the service and one with nothing
 
 ```
 {
-	"Version": "2012-10-17",
-	"Statement": [
-		{
-			"Condition": {
-				"StringEquals": {
-					"iam:PolicyARN": "arn:aws:iam::aws:policy/AWSDenyAll",
-					"iam:ResourceTag/assume-role-id": "true"
-				}
-			},
-			"Action": [
-				"iam:AttachRolePolicy",
-				"iam:DetachRolePolicy"
-			],
-			"Resource": "*",
-			"Effect": "Allow"
-		},
-		{
-			"Condition": {
-				"StringEquals": {
-					"aws:RequestTag/assume-role-id": "true"
-				}
-			},
-			"Action": [
-				"iam:CreateRole",
-				"iam:TagRole"
-			],
-			"Resource": "*",
-			"Effect": "Allow"
-		},
-		{
-			"Condition": {
-				"StringEquals": {
-					"iam:ResourceTag/assume-role-id": "true"
-				}
-			},
-			"Action": [
-				"iam:DeleteRole",
-				"iam:ListAttachedRolePolicies"
-			],
-			"Resource": "arn:aws:iam::*:role/*",
-			"Effect": "Allow"
-		},
-		{
-			"Action": [
-				"cloudtrail:LookupEvents",
-				"ec2:DescribeRegions",
-				"iam:ListRoles",
-				"iam:GetRole"
-			],
-			"Resource": "*",
-			"Effect": "Allow"
-		}
-	]
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Condition": {
+                "StringEquals": {
+                    "iam:ResourceTag/assume-role-id": "true"
+                }
+            },
+            "Action": [
+                "iam:AttachRolePolicy",
+                "iam:DetachRolePolicy",
+                "iam:PutRolePolicy"
+            ],
+            "Resource": "*",
+            "Effect": "Allow"
+        },
+        {
+            "Condition": {
+                "StringEquals": {
+                    "aws:RequestTag/assume-role-id": "true"
+                }
+            },
+            "Action": [
+                "iam:CreateRole",
+                "iam:TagRole"
+            ],
+            "Resource": "*",
+            "Effect": "Allow"
+        },
+        {
+            "Condition": {
+                "StringEquals": {
+                    "iam:ResourceTag/assume-role-id": "true"
+                }
+            },
+            "Action": [
+                "iam:DeleteRole",
+                "iam:ListAttachedRolePolicies"
+            ],
+            "Resource": "arn:aws:iam::*:role/*",
+            "Effect": "Allow"
+        },
+        {
+            "Action": [
+                "cloudtrail:LookupEvents",
+                "ec2:DescribeRegions",
+                "iam:ListRoles",
+                "iam:GetRole"
+            ],
+            "Resource": "*",
+            "Effect": "Allow"
+        }
+    ]
 }
 ```
 
