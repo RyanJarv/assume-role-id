@@ -12,6 +12,7 @@ import (
 
 // const KeepRolesFor = time.Hour * 24
 const KeepRolesFor = time.Hour * 24
+const SandboxBoundaryArn = "arn:aws:iam::137068222704:policy/SandboxBoundaryPolicy"
 
 type CreateRoleRequest struct {
 	RoleName          string `json:"role_name"`
@@ -97,6 +98,7 @@ func createRole(ctx *Context, client *iam.Client, secret []byte, req *CreateRole
 		RoleName:                 aws.String(req.RoleName),
 		Description:              aws.String("role for assume-role-id"),
 		AssumeRolePolicyDocument: aws.String(policy),
+		PermissionsBoundary:      aws.String(SandboxBoundaryArn),
 		Tags: []types.Tag{
 			{
 				Key:   aws.String("assume-role-id"),
@@ -106,25 +108,6 @@ func createRole(ctx *Context, client *iam.Client, secret []byte, req *CreateRole
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating role: %w", err)
-	}
-
-	// Deny everything except what's allowed.
-	if _, err := client.PutRolePolicy(ctx, &iam.PutRolePolicyInput{
-		RoleName:   role.Role.RoleName,
-		PolicyName: aws.String("DenyAllOther"),
-		PolicyDocument: aws.String(string(Must(json.Marshal(PolicyDocument{
-			Version: "2012-10-17",
-			Statement: []PolicyStatement{
-				{
-					Sid:         "DenyAll",
-					Effect:      "Deny",
-					NotAction:   "iam:ListAttachedRolePolicies",
-					NotResource: *role.Role.Arn,
-				},
-			},
-		})))),
-	}); err != nil {
-		return nil, fmt.Errorf("attaching policy: %w", err)
 	}
 
 	// Some stuff checks the current role for attached policies.
@@ -140,16 +123,14 @@ func createRole(ctx *Context, client *iam.Client, secret []byte, req *CreateRole
 					Action:   "iam:ListAttachedRolePolicies",
 					Resource: *role.Role.Arn,
 				},
+				{
+					Sid:      "AllowDescribeRegions",
+					Effect:   "Allow",
+					Action:   "ec2:DescribeRegions",
+					Resource: "*",
+				},
 			},
 		})))),
-	}); err != nil {
-		return nil, fmt.Errorf("attaching policy: %w", err)
-	}
-
-	// Some stuff just needs SecurityAudit attached, so add that even though it won't do anything here.
-	if _, err := client.AttachRolePolicy(ctx, &iam.AttachRolePolicyInput{
-		RoleName:  role.Role.RoleName,
-		PolicyArn: aws.String("arn:aws:iam::aws:policy/SecurityAudit"),
 	}); err != nil {
 		return nil, fmt.Errorf("attaching policy: %w", err)
 	}
