@@ -88,6 +88,9 @@ func createRole(ctx *Context, client *iam.Client, secret []byte, req *CreateRole
 					"Condition": {
 						"Null": {
 							"sts:ExternalId": "false"
+						},
+						"StringNotEquals": {
+							"sts:ExternalId": "PurposefullyIncorrectExternalID"
 						}
 					}
 				}
