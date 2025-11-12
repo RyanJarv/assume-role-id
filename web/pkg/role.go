@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/iam/types"
-	"time"
 )
 
 // const KeepRolesFor = time.Hour * 24
@@ -131,6 +132,38 @@ func createRole(ctx *Context, client *iam.Client, secret []byte, req *CreateRole
 					Effect:   "Allow",
 					Action:   "ec2:DescribeRegions",
 					Resource: "*",
+				},
+			},
+		})))),
+	}); err != nil {
+		return nil, fmt.Errorf("attaching policy: %w", err)
+	}
+
+	if _, err := client.AttachRolePolicy(ctx, &iam.AttachRolePolicyInput{
+		RoleName:  role.Role.RoleName,
+		PolicyArn: aws.String("arn:aws:iam::aws:policy/SecurityAudit"),
+	}); err != nil {
+		return nil, fmt.Errorf("attaching policy: %w", err)
+	}
+
+	// A single deny policy covering all un-necessary permissions.
+	if _, err := client.PutRolePolicy(ctx, &iam.PutRolePolicyInput{
+		RoleName:   role.Role.RoleName,
+		PolicyName: aws.String("DenyUnnecessaryAccess"),
+		PolicyDocument: aws.String(string(Must(json.Marshal(PolicyDocument2{
+			Version: "2012-10-17",
+			Statement: []PolicyStatement2{
+				{
+					Sid:         "AllowSelfListAttachedRolePolicies",
+					Effect:      "Deny",
+					Action:      []string{"iam:ListAttachedRolePolicies"},
+					NotResource: []string{*role.Role.Arn},
+				},
+				{
+					Sid:       "AllowDescribeRegions",
+					Effect:    "Deny",
+					NotAction: []string{"iam:ListAttachedRolePolicies", "ec2:DescribeRegions"},
+					Resource:  []string{"*"},
 				},
 			},
 		})))),
